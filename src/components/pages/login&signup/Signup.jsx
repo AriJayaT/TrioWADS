@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { FaUser, FaEnvelope, FaPhone, FaKey } from "react-icons/fa";
-import InputField from "./InputField";
-import Button from "./Button";
-import { validateEmail, validatePhone, validatePassword } from "../utils/validation";
-import logo from "../assets/logo.jpg"
+import InputField from "/src/components/common/login&signup/InputField";
+import Button from "/src/components/common/Button";
+import { validateEmail, validatePhone, validatePassword } from "/src/utils/validation";
+import logo from "/src/assets/logo.jpg"
 
 const Signup = () => {
   const [formData, setFormData] = useState({
@@ -93,7 +93,7 @@ const Signup = () => {
             icon={<FaKey />}
           />
 
-          <Button>Create Account</Button>
+          <Button variant='bigSubmit'>Create Account</Button>
         </form>
 
         <p className="mt-5 text-sm">

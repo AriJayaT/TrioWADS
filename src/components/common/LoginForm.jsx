@@ -1,14 +1,16 @@
 import React, { useState } from "react";
 import { FaEnvelope, FaKey } from "react-icons/fa";
-import { validateLogin } from "../utils/auth";
-import logo from "../assets/logo.jpg";
+import { validateLogin } from "/src/utils/validation";
+import logo from "/src/assets/logo.jpg";
 import InputField from "./InputField";
 import Button from "./Button";
+import { useNavigate } from "react-router-dom";
 
 const LoginForm = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const navigate = useNavigate();
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -18,6 +20,7 @@ const LoginForm = () => {
     } else {
       setError("");
       // TODO: redirect or perform login action here
+      navigate("/admin")
     }
   };
 
@@ -53,7 +56,7 @@ const LoginForm = () => {
 
         {error && <p className="text-red-500 mt-[-1px] text-sm">{error}</p>}
 
-        <Button>Sign in</Button>
+        <Button variant="bigSubmit">Sign in</Button>
       </form>
 
       <p className="mt-5 text-sm">New to Jellycats?</p>

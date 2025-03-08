@@ -1,13 +1,13 @@
 import React from "react";
-import LoginForm from "./LoginForm";
+import LoginForm from "/src/components/common/LoginForm";
 
 // Plush images
-import bunny from "../assets/login/bunny.png";
-import dragon from "../assets/login/dragon.png";
-import egg from "../assets/login/egg.jpg";
-import penguin from "../assets/login/penguin.jpg";
-import potato from "../assets/login/potato.jpg";
-import whiteRabbit from "../assets/login/whiteRabbit.png";
+import bunny from "/src/assets/login/bunny.png";
+import dragon from "/src/assets/login/dragon.png";
+import egg from "/src/assets/login/egg.jpg";
+import penguin from "/src/assets/login/penguin.jpg";
+import potato from "/src/assets/login/potato.jpg";
+import whiteRabbit from "/src/assets/login/whiteRabbit.png";
 
 // Custom Star Component
 const Star = ({ 
