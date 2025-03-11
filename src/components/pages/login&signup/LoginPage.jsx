@@ -50,7 +50,7 @@ const Star = ({
   );
 };
 
-// Plush Image Component
+// Plush Image Component with responsive visibility
 const ResponsivePlushImage = ({ 
   src, 
   alt, 
@@ -59,7 +59,9 @@ const ResponsivePlushImage = ({
   size = "w-20 h-20",
   position = "absolute",
   noShadow = false,
-  zIndex = 30
+  zIndex = 30,
+  visibleFrom = "md", // Default to only show on medium screens and up
+  visibleUpTo = "" // Optional parameter to hide on larger screens
 }) => (
   <img
     src={src}
@@ -67,7 +69,7 @@ const ResponsivePlushImage = ({
     className={`${position} ${size} rounded-full object-cover 
       ${!noShadow && 'shadow-lg'}
       rotate-${rotationDeg} 
-      hidden md:block 
+      hidden ${visibleFrom}:block ${visibleUpTo ? `${visibleUpTo}:hidden` : ''} 
       ${className}`}
     style={{
       zIndex: zIndex,
@@ -78,107 +80,117 @@ const ResponsivePlushImage = ({
 
 const LoginPage = () => {
   return (
-    <div className="relative w-full h-screen bg-gradient-to-r from-white to-pink-200 overflow-hidden flex items-center justify-center">
-      {/* Decorative Circles */}
-      <div className="absolute w-6 h-6 bg-black rounded-full bottom-[23%] left-[17%] hidden md:block" />
-      <div className="absolute w-8 h-8 bg-pink-300 rounded-full top-[40%] left-[24%] z-30 hidden md:block" />
+    <div className="relative w-full min-h-screen bg-gradient-to-r from-white to-pink-200 overflow-hidden flex items-center justify-center p-4">
+      {/* Decorative Circles - Only visible on medium screens and up */}
+      <div className="absolute w-7 h-7 bg-black rounded-full bottom-[23%] left-[17%] hidden md:block" />
+      <div className="absolute w-9 h-9 bg-pink-300 rounded-full top-[40%] left-[24%] z-30 hidden md:block" />
       <div className="absolute w-20 h-20 bg-pink-300 rounded-full bottom-[25%] right-[13%] hidden md:block" />
-      <div className="absolute w-7 h-7 bg-pink-300 rounded-full bottom-[37%] right-[20%] hidden md:block" />
+      <div className="absolute w-7 h-7 bg-pink-300 rounded-full bottom-[37%] right-[19%] hidden md:block" />
 
-      {/* Stars */}
+      {/* Stars - Adjust visibility based on screen size */}
       <Star 
         color="black"
         rotationDeg={-15}
-        size="h-10"
-        position="absolute top-[44%] left-[34.59%]"
+        size="h-6 sm:h-8 md:h-10"
+        position="absolute top-[44%] left-[36%]"
         animate
+        className="hidden sm:block"
       />
       <Star 
         color="black"
         rotationDeg={15}
-        position="absolute bottom-[40%] right-[34.8%]"
-        size="h-8"
+        position="absolute bottom-[40%] right-[36%]"
+        size="h-4 sm:h-6 md:h-8"
         animate
-        className="hover:scale-110 transition-transform duration-300"
+        className="hidden sm:block"
       />
       <Star 
         color="black"
-        size="h-6"
+        size="h-8"
         rotationDeg={-15}
-        position="absolute top-[40%] right-[4%]"
+        position="absolute top-[40%] right-[5%]"
+        className="hidden md:block"
       />
       <Star 
         color="pink"
-        size="h-12"
-        position="absolute top-[7%] left-[44%]"
+        size="h-6 sm:h-8 md:h-12"
+        position="absolute top-[10%] left-[44.5%]"
         rotationDeg={25}
       />
       <Star 
         color="pink"
-        size="h-7"
-        position="absolute top-[10%] right-[44.5%]"
+        size="h-4 sm:h-6 md:h-7"
+        position="absolute top-[14%] right-[45.5%]"
         rotationDeg={-15}
         intensity={0.5}
+        className="hidden sm:block"
       />
 
-      {/* Decorative Rectangles */}
+      {/* Decorative Rectangles - Only visible on medium screens and up */}
       <div 
-        className="absolute w-18 h-18 border-2 border-pink-300 bg-transparent top-[25%] right-[16%] hidden md:block"
+        className="absolute w-18 h-18 border-2 border-pink-300 bg-transparent top-[23%] right-[12.5%] hidden md:block"
         style={{ zIndex: 40 }}
       /> 
       <div 
-        className="absolute w-9 h-9 border-2 border-pink-300 bg-transparent bottom-[28%] right-[35%] hidden md:block"
+        className="absolute w-9 h-9 border-2 border-pink-300 bg-transparent bottom-[28%] right-[36.5%] hidden md:block"
       /> 
 
-      {/* Plus Sign */}
+      {/* Plus Sign - Only visible on medium screens and up */}
       <div className="absolute top-[12%] left-[1.7%] text-black text-7xl font-light z-40 hidden md:block">
         +
       </div>
 
-      {/* Plush Images */}
+      {/* Desktop plush images (show all) */}
       <ResponsivePlushImage 
         src={egg} 
         alt="Egg Plush" 
-        size="w-30 h-30"
+        size="w-24 h-24"
         position="absolute top-[10%] left-[5%]"
         className="border-t border-b border-pink-500 bg-white"
+        visibleFrom="lg"
+        visibleUpTo=""
       />
       <ResponsivePlushImage 
         src={potato} 
         alt="Potato Plush" 
-        size="w-40 h-40"
+        size="w-32 h-32"
         position="absolute top-[20%] right-[5%]"
         className="border-t border-b border-pink-300"
+        visibleFrom="lg"
       />
       <ResponsivePlushImage 
         src={penguin} 
         alt="Penguin Plush" 
-        size="w-35 h-35"
+        size="w-28 h-28"
         position="absolute bottom-[15%] left-[20%]"
+        visibleFrom="lg"
       />
       <ResponsivePlushImage 
         src={bunny} 
         alt="Bunny Plush" 
-        position="absolute bottom-[10%] right-[37%]"
+        position="absolute bottom-[14%] right-[37%]"
         rotationDeg={15}
         noShadow
         zIndex={40}
+        visibleFrom="lg"
       />
       <ResponsivePlushImage 
         src={whiteRabbit} 
         alt="White Rabbit Plush" 
-        position="absolute bottom-[10%] left-[36.5%]"
+        position="absolute bottom-[14%] left-[36.5%]"
         rotationDeg={-15}
         noShadow
         zIndex={40}
+        visibleFrom="lg"
       />
       <ResponsivePlushImage 
         src={dragon} 
         alt="Sky Dragon Plush" 
         size="w-100"
-        position="absolute -bottom-[20%] right-[8%]"
-        rotationDeg={-15}
+        position="absolute -bottom-[20%] right-[10%]"
+        rotationDeg={-10}
         noShadow
+        visibleFrom="lg"
       />
 
       <LoginForm />

@@ -37,19 +37,19 @@ const SystemOverview = () => {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">System Overview</h1>
-        <div className="flex gap-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4 sm:gap-0">
+        <h1 className="text-2xl sm:text-3xl font-bold">System Overview</h1>
+        <div className="flex flex-wrap gap-3 sm:gap-6">
           <Button variant='smallSubmit' size='md'>System Status</Button>
           <Button variant='smallSubmit' size='md'>Generate Report</Button>
         </div>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {metrics.map((metric, index) => (
           <div 
             key={index} 
-            className="bg-white rounded-2xl shadow-lg hover:shadow-pink-200 p-4 transition-all"
+            className="bg-white rounded-2xl shadow-lg hover:shadow-pink-200 p-3 sm:p-4 transition-all"
           >
             <MetricCard
               key={index}

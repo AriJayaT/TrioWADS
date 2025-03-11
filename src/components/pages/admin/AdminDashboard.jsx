@@ -9,7 +9,7 @@ const AdminDashboard = () => {
     <DashboardLayout title="Dashboard">
       <SystemOverview />
       
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8 bg-pink-50">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mt-6 sm:mt-8">
         <div className="lg:col-span-2">
           <AgentPerformance />
         </div>

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { FaEnvelope, FaKey } from "react-icons/fa";
-import { validateLogin } from "/src/utils/validation";
+import { validateLogin } from "/src/utils/auth";
 import logo from "/src/assets/logo.jpg";
 import InputField from "./InputField";
 import Button from "./Button";

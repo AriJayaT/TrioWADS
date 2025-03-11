@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { FaUser, FaEnvelope, FaPhone, FaKey } from "react-icons/fa";
-import InputField from "/src/components/common/login&signup/InputField";
+import InputField from "/src/components/common/InputField";
 import Button from "/src/components/common/Button";
 import { validateEmail, validatePhone, validatePassword } from "/src/utils/validation";
 import logo from "/src/assets/logo.jpg"
