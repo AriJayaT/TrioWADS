@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base styles for the Jellycat Support App */
+body {
+  font-family: 'Inter', -apple-system, Roboto, Helvetica, sans-serif;
+  background-color: #fff5f9;
+  color: #2d3033;
+}
+
+/* Custom font for headings if needed */
+@layer base {
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-bold;
+  }
+}
+
+/* Custom component styles if needed */
+@layer components {
+  .btn-primary {
+    @apply bg-primary text-white px-4 py-2 rounded-default shadow-primary transition-transform hover:translate-y-[-2px];
+  }
+  
+  .btn-outline {
+    @apply bg-white text-primary border-2 border-primary-light px-4 py-2 rounded-default transition-transform hover:translate-y-[-2px];
+  }
+  
+  .card {
+    @apply bg-white rounded-large shadow-card p-6;
+  }
+}

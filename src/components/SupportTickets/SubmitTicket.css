@@ -1,0 +1,567 @@
+.submit-ticket {
+  min-height: 100vh;
+  background-color: #fff5f9;
+  font-family: Inter, -apple-system, Roboto, Helvetica, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Main content area that comes after the header */
+.submit-ticket__main {
+  flex: 1;
+  width: 100%;
+}
+
+.submit-ticket__content {
+  max-width: 1200px;
+  width: 100%;
+  margin: 48px auto;
+  padding: 0 32px;
+}
+
+.submit-ticket__title {
+  color: #2d3033;
+  font-size: 32px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.submit-ticket__description {
+  color: #6c7781;
+  font-size: 16px;
+  margin: 8px 0 32px;
+}
+
+.submit-ticket__form {
+  background-color: #fff;
+  border-radius: 24px;
+  box-shadow: 0px 8px 24px rgba(255, 158, 205, 0.15);
+  padding: 32px;
+  margin-bottom: 32px;
+}
+
+.submit-ticket__form-row {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.submit-ticket__form-group {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 24px;
+}
+
+.submit-ticket__label {
+  color: #6c7781;
+  font-size: 14px;
+  display: block;
+  margin-bottom: 8px;
+}
+
+/* Dropdown Styling */
+.submit-ticket__dropdown {
+  position: relative;
+  width: 100%;
+}
+
+.submit-ticket__dropdown-selected {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: white;
+  border: 2px solid #ffe5f2;
+  border-radius: 12px;
+  padding: 16px 12px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  font-size: 14px;
+  color: #2d3033;
+}
+
+.submit-ticket__dropdown-selected:hover {
+  border-color: #ff9ecd;
+}
+
+.submit-ticket__dropdown-selected.disabled {
+  background-color: #f5f5f5;
+  color: #aaa;
+  cursor: not-allowed;
+}
+
+.submit-ticket__dropdown-arrow {
+  font-size: 12px;
+  color: #6c7781;
+  transition: transform 0.2s ease;
+}
+
+.submit-ticket__dropdown-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 100%;
+  background-color: white;
+  border-radius: 12px;
+  box-shadow: 0px 8px 16px rgba(255, 158, 205, 0.2);
+  z-index: 10;
+  max-height: 240px;
+  overflow-y: auto;
+  animation: dropdownAppear 0.2s ease-out;
+}
+
+@keyframes dropdownAppear {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.submit-ticket__dropdown-item {
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  font-size: 14px;
+}
+
+.submit-ticket__dropdown-item:hover {
+  background-color: #fff5f9;
+}
+
+.submit-ticket__dropdown-item.active {
+  background-color: #fff5f9;
+  color: #ff9ecd;
+  font-weight: 500;
+}
+
+/* Input Styling */
+.submit-ticket__input,
+.submit-ticket__textarea {
+  width: 100%;
+  border: 2px solid #ffe5f2;
+  border-radius: 12px;
+  padding: 16px 12px;
+  font-size: 14px;
+  color: #2d3033;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.submit-ticket__input:focus,
+.submit-ticket__textarea:focus {
+  outline: none;
+  border-color: #ff9ecd;
+  box-shadow: 0px 0px 0px 3px rgba(255, 158, 205, 0.1);
+}
+
+.submit-ticket__textarea {
+  min-height: 160px;
+  resize: vertical;
+}
+
+.submit-ticket__input::placeholder,
+.submit-ticket__textarea::placeholder {
+  color: #aaa;
+}
+
+/* Form Footer */
+.submit-ticket__form-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-top: 8px;
+}
+
+/* Priority Radio Buttons */
+.submit-ticket__priority-select {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.submit-ticket__priority-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.submit-ticket__priority-option input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.submit-ticket__priority-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background-color: white;
+  border: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.submit-ticket__priority-option input[type="radio"]:checked + .submit-ticket__priority-indicator {
+  background-color: #fff5f9;
+  border-color: #ffe5f2;
+}
+
+.submit-ticket__priority-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.submit-ticket__priority-dot--high {
+  background-color: #ff4b4b;
+}
+
+.submit-ticket__priority-dot--normal {
+  background-color: #ffb800;
+}
+
+.submit-ticket__priority-dot--low {
+  background-color: #00c48c;
+}
+
+/* Form Buttons */
+.submit-ticket__actions {
+  display: flex;
+  gap: 16px;
+}
+
+.submit-ticket__button {
+  border-radius: 12px;
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: transform 0.2s ease, background-color 0.2s ease;
+}
+
+.submit-ticket__button:hover {
+  transform: translateY(-2px);
+}
+
+.submit-ticket__button--primary {
+  background-color: #ff9ecd;
+  color: #fff;
+  box-shadow: 0px 4px 12px rgba(255, 158, 205, 0.3);
+}
+
+.submit-ticket__button--primary:hover {
+  background-color: #ff8ac0;
+}
+
+.submit-ticket__button--secondary {
+  background-color: transparent;
+  color: #6c7781;
+  border: 2px solid #ffe5f2;
+}
+
+/* Info section */
+.submit-ticket__info-section {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.submit-ticket__priority-guide {
+  background-color: #fff;
+  border-radius: 24px;
+  box-shadow: 0px 8px 24px rgba(255, 158, 205, 0.15);
+  padding: 24px;
+  max-width: 460px;
+}
+
+.submit-ticket__priority-guide-title {
+  color: #2d3033;
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 16px;
+}
+
+.submit-ticket__priority-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  color: #6c7781;
+  font-size: 14px;
+}
+
+.submit-ticket__priority-item:first-child {
+  margin-top: 0;
+}
+
+/* Chat Widget Button */
+.submit-ticket__chat-widget {
+  position: relative;
+  background-color: #ff9ecd;
+  border-radius: 50%;
+  width: 60px;
+  height: 60px;
+  box-shadow: 0px 4px 12px rgba(255, 158, 205, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.submit-ticket__chat-icon {
+  font-size: 24px;
+  color: white;
+}
+
+.submit-ticket__chat-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background-color: #ff4b4b;
+  color: #fff;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Modal Styling */
+.submit-ticket__modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.submit-ticket__modal {
+  background-color: white;
+  border-radius: 24px;
+  padding: 32px;
+  max-width: 400px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0px 8px 24px rgba(255, 158, 205, 0.25);
+  animation: modalSlideIn 0.3s ease-out;
+}
+
+@keyframes modalSlideIn {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.submit-ticket__modal-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background-color: rgba(0, 196, 140, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 24px;
+  font-size: 32px;
+  color: #00c48c;
+}
+
+.submit-ticket__modal-title {
+  color: #2d3033;
+  font-size: 24px;
+  margin-bottom: 16px;
+  font-weight: 700;
+}
+
+.submit-ticket__modal-content {
+  color: #6c7781;
+  margin-bottom: 24px;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.submit-ticket__modal-reference {
+  font-size: 24px;
+  font-weight: 700;
+  color: #ff9ecd;
+  margin: 16px 0;
+  padding: 12px;
+  background-color: rgba(255, 229, 242, 0.5);
+  border-radius: 8px;
+  letter-spacing: 1px;
+}
+
+/* Enhanced confirmation modal styling */
+.submit-ticket__confirmation-modal {
+  width: 90%;
+  max-width: 600px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.submit-ticket__modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #ffe5f2;
+  margin-bottom: 20px;
+}
+
+.submit-ticket__modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #6c7781;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.submit-ticket__confirmation-text {
+  color: #6c7781;
+  margin-bottom: 12px;
+  font-size: 16px;
+}
+
+.submit-ticket__ticket-subject {
+  background-color: rgba(255, 229, 242, 0.5);
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-weight: 600;
+  margin-bottom: 24px;
+  color: #2d3033;
+  font-style: italic;
+}
+
+.submit-ticket__related-articles {
+  margin: 20px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.submit-ticket__related-article {
+  background-color: #fff5f9;
+  padding: 16px;
+  border-radius: 12px;
+  border-left: 4px solid #ff9ecd;
+}
+
+.submit-ticket__article-category {
+  font-size: 12px;
+  color: #6c7781;
+  margin-bottom: 4px;
+}
+
+.submit-ticket__article-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #2d3033;
+  margin: 0 0 8px 0;
+}
+
+.submit-ticket__article-excerpt {
+  font-size: 14px;
+  color: #6c7781;
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+.submit-ticket__article-link {
+  color: #ff9ecd;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.submit-ticket__article-link:hover {
+  text-decoration: underline;
+}
+
+.submit-ticket__no-articles {
+  color: #6c7781;
+  font-style: italic;
+}
+
+.submit-ticket__confirmation-question {
+  font-size: 16px;
+  font-weight: 500;
+  color: #2d3033;
+  margin: 24px 0 0 0;
+  text-align: center;
+}
+
+.submit-ticket__modal-actions {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  .submit-ticket__content {
+    padding: 0 20px;
+    margin: 32px auto;
+  }
+  
+  .submit-ticket__form {
+    padding: 24px 20px;
+  }
+  
+  .submit-ticket__form-row {
+    flex-direction: column;
+    gap: 16px;
+  }
+  
+  .submit-ticket__form-footer {
+    flex-direction: column;
+    gap: 24px;
+  }
+  
+  .submit-ticket__actions {
+    width: 100%;
+  }
+  
+  .submit-ticket__button {
+    flex: 1;
+  }
+  
+  .submit-ticket__info-section {
+    flex-direction: column;
+    gap: 20px;
+  }
+  
+  .submit-ticket__priority-guide {
+    width: 100%;
+  }
+  
+  .submit-ticket__chat-widget {
+    align-self: flex-end;
+  }
+  
+  .submit-ticket__priority-select {
+    flex-direction: column;
+    gap: 8px;
+  }
+}

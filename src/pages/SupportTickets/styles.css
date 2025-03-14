@@ -1,0 +1,105 @@
+.tickets-container {
+  width: 100%;
+  min-height: 100vh;
+  background-color: #fff5f9;
+  font-family:
+    Inter,
+    -apple-system,
+    Roboto,
+    Helvetica,
+    sans-serif;
+}
+
+/* Table Styles */
+.tickets-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.tickets-table th {
+  padding-bottom: 16px;
+  text-align: left;
+  color: #6c7781;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  border-bottom: 1px solid #ffe5f2;
+}
+
+.tickets-table td {
+  padding: 20px 16px;
+  font-size: 14px;
+  line-height: 20px;
+  color: #2d3033;
+  border-bottom: 1px solid #ffe5f2;
+}
+
+.tickets-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Status and Priority Badges */
+.status-badge,
+.priority-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.status-Open {
+  color: #ff9ecd;
+}
+
+.status-Closed {
+  color: #00c48c;
+}
+
+.status-In Progress {
+  color: #ffb800;
+}
+
+.priority-High {
+  color: #ff4b4b;
+}
+
+.priority-Normal {
+  color: #6c7781;
+}
+
+.category-badge {
+  display: inline-flex;
+  padding: 2px 12px;
+  background-color: #fff5f9;
+  color: #ff9ecd;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 991px) {
+  .tickets-container {
+    padding: 24px 20px;
+  }
+}
+
+@media (max-width: 768px) {
+  .tickets-container {
+    padding: 16px;
+  }
+
+  .tickets-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tickets-table th,
+  .tickets-table td {
+    white-space: nowrap;
+  }
+}

@@ -1,0 +1,62 @@
+.submit-ticket__dropdown {
+  position: relative;
+  width: 100%;
+}
+
+.submit-ticket__dropdown-selected {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border: 2px solid #ffe4e4;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  background: white;
+}
+
+.submit-ticket__dropdown-selected.disabled {
+  background: #f3f4f6;
+  cursor: not-allowed;
+}
+
+.submit-ticket__dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 0.25rem;
+  background: white;
+  border: 2px solid #ffe4e4;
+  border-radius: 0.75rem;
+  z-index: 10;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.submit-ticket__dropdown-item {
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+}
+
+.submit-ticket__dropdown-item:hover {
+  background: #ffe4e4;
+}
+
+.submit-ticket__dropdown-item.active {
+  background: #ffe4e4;
+}
+
+.submit-ticket__dropdown-arrow {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+@media (max-width: 640px) {
+  .submit-ticket__form-row {
+    flex-direction: column;
+  }
+
+  .submit-ticket__form-group {
+    width: 100%;
+  }
+}

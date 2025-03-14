@@ -1,0 +1,16 @@
+/* Additional custom styles for animations if needed */
+@keyframes sparkle {
+  0% {
+    transform: scale(1) rotate(0deg);
+  }
+  50% {
+    transform: scale(1.1) rotate(180deg);
+  }
+  100% {
+    transform: scale(1) rotate(360deg);
+  }
+}
+
+.sparkle-animation {
+  animation: sparkle 2s infinite;
+}
