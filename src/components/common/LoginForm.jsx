@@ -1,26 +1,45 @@
 import React, { useState } from "react";
 import { FaEnvelope, FaKey } from "react-icons/fa";
-import { validateLogin } from "/src/utils/auth";
 import logo from "/src/assets/logo.jpg";
 import InputField from "./InputField";
 import Button from "./Button";
 import { useNavigate } from "react-router-dom";
+import { loginUser } from "/src/utils/api";
 
 const LoginForm = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    const loginSuccess = validateLogin(email, password);
-    if (!loginSuccess) {
-      setError("Invalid email or password");
-    } else {
-      setError("");
-      // TODO: redirect or perform login action here
-      navigate("/admin")
+    setIsLoading(true);
+    setError("");
+    
+    try {
+      const response = await loginUser(email, password);
+      
+      if (response.success) {
+        // Store user info and token in localStorage or context
+        localStorage.setItem('user', JSON.stringify(response.user));
+        localStorage.setItem('token', response.token);
+        
+        // Redirect based on user role
+        if (response.user.role === 'admin') {
+          navigate("/admin");
+        } else {
+          navigate("/dashboard");
+        }
+      } else {
+        setError(response.message || "Login failed");
+      }
+    } catch (error) {
+      setError("An error occurred. Please try again.");
+      console.error(error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -43,6 +62,7 @@ const LoginForm = () => {
           onChange={(e) => setEmail(e.target.value)}
           icon={<FaEnvelope />}
           className="mb-3"
+          disabled={isLoading}
         />
 
         <InputField
@@ -52,11 +72,14 @@ const LoginForm = () => {
           onChange={(e) => setPassword(e.target.value)}
           icon={<FaKey />}
           className="mb-2"
+          disabled={isLoading}
         />
 
         {error && <p className="text-red-500 mt-[-1px] text-sm">{error}</p>}
 
-        <Button variant="bigSubmit">Sign in</Button>
+        <Button variant="bigSubmit" disabled={isLoading}>
+          {isLoading ? "Signing in..." : "Sign in"}
+        </Button>
       </form>
 
       <p className="mt-5 text-sm">New to Jellycats?</p>
