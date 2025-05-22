@@ -1,6 +1,6 @@
-# Jellycat Support Server
+# YipHelp Support Server
 
-Backend server for Jellycat Support customer service portal.
+Backend server for YipHelp Support customer service portal.
 
 ## Setup Instructions
 
