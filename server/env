@@ -1,0 +1,7 @@
+MONGODB_URI=mongodb://e2425-wads-l4acg3:pos5lpet@localhost:27018/e2425-wads-l4acg3?authSource=e2425-wads-l4acg3
+JWT_SECRET=9e9c8007a04bcbc1f22a9292c5feadd107ffde8bbdc42e7dc50126518d7a0c8efcb0f2af271696d23d1fb10440c7a4f149acc396c8b7203503de0bc7002ba64d
+JWT_ECPIRATION=14d
+PORT=5000
+NODE_ENV=development
+VITE_API_URL=http://localhost:5000/api
+VITE_GOOGLE_CLIENT_ID=736321627832-t1pq96tu8hfqdt9tvkrdpr8ppf52css5.apps.googleusercontent.com
