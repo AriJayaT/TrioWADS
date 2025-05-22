@@ -53,46 +53,8 @@ npm run dev
 
 The API documentation is available at `http://localhost:5000/api-docs` when the server is running.
 
-## Cloudflare Tunnel Integration
-
-To use Cloudflare Tunnel Zero for secure remote access:
-
-1. Install the Cloudflare CLI:
-
-```bash
-brew install cloudflare/cloudflare/cloudflared
-```
-
-2. Authenticate with Cloudflare:
-
-```bash
-cloudflared tunnel login
-```
-
-3. Create a tunnel:
-
-```bash
-cloudflared tunnel create jellycat-support
-```
-
-4. Configure your tunnel (create a config file named `config.yml`):
-
-```yaml
-tunnel: <tunnel-id>
-credentials-file: /path/to/credentials.json
-ingress:
-  - hostname: api.yourdomain.com
-    service: http://localhost:5000
-  - service: http_status:404
-```
-
-5. Start the tunnel:
-
-```bash
-cloudflared tunnel run jellycat-support
-```
-
-6. Ensure your DNS records are set up to point to your tunnel.
+## Cloudflare Tunnel Zero
+Just run Mr Juwono tutorial
 
 ## API Routes
 
