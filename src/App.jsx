@@ -21,6 +21,7 @@ import AdminProfile from "./components/pages/profile/AdminProfile";
 import AgentProfile from "./components/pages/profile/AgentProfile";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import VerifyEmail from './components/pages/login&signup/VerifyEmail';
+import ManageArticles from "./components/pages/agent/ManageArticles";
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -173,6 +174,11 @@ function App() {
             <Route path="/agent/tickets" element={
               <PrivateRoute requiredRole="agent">
                 <TicketList />
+              </PrivateRoute>
+            } />
+            <Route path="/agent/articles" element={
+              <PrivateRoute requiredRole="agent">
+                <ManageArticles />
               </PrivateRoute>
             } />
             <Route path="/agent/profile" element={

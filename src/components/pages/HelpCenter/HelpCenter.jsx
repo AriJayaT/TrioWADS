@@ -28,7 +28,7 @@ const HelpCenter = ({ layout = "default" }) => {
       const loadArticles = async () => {
         try {
           const data = await fetchArticles();
-          setArticles(data);
+          setArticles(data.filter(article => article.isPublished));
         } catch (err) {
           console.error('Failed to fetch articles:', err);
         } finally {
@@ -202,10 +202,9 @@ const HelpCenter = ({ layout = "default" }) => {
                   {selectedArticle.category}
                 </span>
                 <h2 className="text-2xl font-bold text-gray-800 mt-2 mb-4">{selectedArticle.title}</h2>
-                <div
-                  className="prose max-w-none text-gray-700"
-                  dangerouslySetInnerHTML={{ __html: selectedArticle.content }}
-                />
+                <div className="whitespace-pre-line text-gray-700">
+                  {selectedArticle.content}
+                </div>
               </div>
             ) : (
               <div className="flex flex-col md:flex-row gap-8">
