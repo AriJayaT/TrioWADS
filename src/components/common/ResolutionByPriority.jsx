@@ -1,13 +1,31 @@
-import React from "react";
-
-const data = [
-  { priority: "Urgent", count: 156, current: "32m", percentage: 85 },
-  { priority: "High", count: 284, current: "1h 15m", percentage: 75 },
-  { priority: "Medium", count: 423, current: "2h 45m", percentage: 82 },
-  { priority: "Low", count: 384, current: "4h 30m", percentage: 92 },
-];
+import React, { useEffect, useState } from "react";
 
 const ResolutionByPriority = () => {
+  const [data, setData] = useState([]);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetch("http://localhost:5000/api/analytics/resolution-by-priority", {
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem("token")}`
+      }
+    })
+      .then(res => res.json())
+      .then(resData => {
+        if (resData.success) {
+          setData(resData.data);
+        } else {
+          setError("Failed to load priority data");
+        }
+      })
+      .catch(err => {
+        console.error("Priority fetch error:", err);
+        setError("Something went wrong");
+      });
+  }, []);
+
+  if (error) return <p className="text-red-500">{error}</p>;
+
   return (
     <div className="bg-white p-6 rounded-2xl shadow-md w-full">
       <div className="flex justify-between items-center mb-6">
@@ -33,7 +51,7 @@ const ResolutionByPriority = () => {
           <div className="relative w-full h-3 bg-pink-200 rounded-full">
             <div
               className="absolute top-0 left-0 h-3 bg-pink-400 rounded-full"
-              style={{ width: `${item.percentage}%` }}
+              style={{ width: `${Math.min((item.avgMinutes / 60) * 10, 100)}%` }}
             ></div>
           </div>
           <div className="text-green-500 font-semibold text-sm mt-1">{item.percentage}%</div>
@@ -43,4 +61,4 @@ const ResolutionByPriority = () => {
   );
 };
 
-export default ResolutionByPriority; 
+export default ResolutionByPriority;

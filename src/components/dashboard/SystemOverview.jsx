@@ -1,34 +1,57 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { FaUsers, FaTicketAlt, FaBolt, FaStar } from 'react-icons/fa';
 import MetricCard from '../common/MetricCard';
 import Button from '../common/Button';
 
 const SystemOverview = () => {
-  const metrics = [
+  const [metrics, setMetrics] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetch("http://localhost:5000/api/analytics/system-overview", {
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem("token")}`
+      }
+    })
+      .then(res => res.json())
+      .then(json => {
+        if (json.success) setMetrics(json.metrics);
+        else setError("Failed to load overview metrics");
+      })
+      .catch(err => {
+        console.error("System overview fetch failed", err);
+        setError("Something went wrong");
+      });
+  }, []);
+
+  if (error) return <p className="text-red-500">{error}</p>;
+  if (!metrics) return <p className="text-gray-500">Loading overview...</p>;
+
+  const metricItems = [
     {
       icon: <FaUsers className="text-lg text-gray-500" />,
-      value: '24/30',
+      value: metrics.activeAgents,
       label: 'Active Agents',
-      change: '+2',
+      change: '+2', // Optional: you can add logic for real change
       changeType: 'positive'
     },
     {
       icon: <FaTicketAlt className="text-lg text-orange-400" />,
-      value: '847',
+      value: metrics.ticketVolume,
       label: 'Ticket Volume',
       change: '+12%',
       changeType: 'positive'
     },
     {
       icon: <FaBolt className="text-lg" />,
-      value: '99.9%',
+      value: metrics.systemResponse,
       label: 'System Response',
       change: '+0.1%',
       changeType: 'positive'
     },
     {
       icon: <FaStar className="text-lg" />,
-      value: '4.8',
+      value: metrics.overallCSAT,
       label: 'Overall CSAT',
       change: '+0.2',
       changeType: 'positive'
@@ -44,15 +67,14 @@ const SystemOverview = () => {
           <Button variant='smallSubmit' size='md'>Generate Report</Button>
         </div>
       </div>
-      
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {metrics.map((metric, index) => (
-          <div 
-            key={index} 
+        {metricItems.map((metric, index) => (
+          <div
+            key={index}
             className="bg-white rounded-2xl shadow-lg hover:shadow-pink-200 p-3 sm:p-4 transition-all"
           >
             <MetricCard
-              key={index}
               icon={metric.icon}
               value={metric.value}
               label={metric.label}

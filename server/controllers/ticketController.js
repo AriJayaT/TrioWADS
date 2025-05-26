@@ -730,4 +730,39 @@ export const removeTicketFromView = async (req, res) => {
     console.error('Remove ticket error:', error);
     res.status(500).json({ error: 'Server error' });
   }
-}; 
+};
+/**
+ * Get ticket count by category
+ * @route GET /api/tickets/distribution
+ * @access Private (Admin/Agent)
+ */
+export const getTicketDistribution = async (req, res) => {
+  console.log('DEBUG: req.user =', req.user); // ✅ Check user identity in logs
+
+  try {
+    if (!req.user || req.user.role === 'customer') {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    const distribution = await Ticket.aggregate([
+      {
+        $group: {
+          _id: '$category',
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          name: '$_id',
+          count: 1
+        }
+      }
+    ]);
+
+    res.status(200).json(distribution);
+  } catch (error) {
+    console.error('Ticket distribution error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+};

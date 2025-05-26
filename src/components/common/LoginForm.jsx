@@ -22,6 +22,9 @@ const LoginForm = ({ userType = "customer" }) => {
     try {
       // Call the login API using our authService
       const result = await authService.login({ email, password });
+
+      // This would save token to localStorage
+      localStorage.setItem("token", result.token);
       
       // Check user role if needed
       const user = result.user;
@@ -54,6 +57,7 @@ const LoginForm = ({ userType = "customer" }) => {
     
     try {
       const result = await authService.loginWithGoogle();
+      localStorage.setItem("token", result.token);
       const user = result.user;
       
       // Validate user role matches the selected login type

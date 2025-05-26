@@ -1,46 +1,48 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import StatusBadge from '../common/StatusBadge';
 import Button from '../common/Button';
 
 const AgentPerformance = () => {
-  const agents = [
-    {
-      id: 1,
-      initials: 'SA',
-      name: 'Sarah Anderson',
-      responseTime: '6m',
-      tickets: 28,
-      resolution: '94%',
-      status: 'Online'
-    },
-    {
-      id: 2,
-      initials: 'MT',
-      name: 'Mike Thompson',
-      responseTime: '11m',
-      tickets: 23,
-      resolution: '91%',
-      status: 'Online'
-    },
-    {
-      id: 3,
-      initials: 'LC',
-      name: 'Lisa Chen',
-      responseTime: '15m',
-      tickets: 19,
-      resolution: '88%',
-      status: 'Away'
-    },
-    {
-      id: 4,
-      initials: 'JW',
-      name: 'James Wilson',
-      responseTime: '10m',
-      tickets: 25,
-      resolution: '93%',
-      status: 'Offline'
+  const [agents, setAgents] = useState([]);
+  const [error, setError] = useState(null);
+
+  const fetchAgents = async () => {
+    try {
+      const res = await fetch("http://localhost:5000/api/users/agents", {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`
+        }
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        const processed = data.agents.map(agent => {
+          const initials = agent.name.split(" ").map(n => n[0]).join("");
+          return {
+            id: agent.id,
+            initials,
+            name: agent.name,
+            responseTime: '10m', // Simulated until backend supports it
+            tickets: agent.assignedTickets.length,
+            resolution: agent.stats?.resolution || '0%',
+            status: agent.status || 'Offline'
+          };
+        });
+        setAgents(processed);
+      } else {
+        setError("Failed to load agent data");
+      }
+    } catch (err) {
+      console.error("Agent fetch failed:", err);
+      setError("Error loading agents");
     }
-  ];
+  };
+
+  useEffect(() => {
+    fetchAgents();
+  }, []);
+
+  if (error) return <p className="text-red-500">{error}</p>;
 
   return (
     <div className="mt-8">
@@ -60,7 +62,7 @@ const AgentPerformance = () => {
                 <div className="text-xs text-gray-500">Response Time: {agent.responseTime}</div>
               </div>
             </div>
-            
+
             <div className="flex flex-wrap items-center gap-4 sm:gap-0 w-full sm:w-auto">
               <div className="mr-0 sm:mr-8 text-center">
                 <div>{agent.tickets} tickets</div>

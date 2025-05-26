@@ -1,21 +1,55 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { FaStar, FaArrowUp, FaArrowDown } from 'react-icons/fa';
-
-const agentsData = [
-  { name: 'Sarah Anderson', role: 'Senior Agent', initials: 'SA', tickets: 284, avgResolution: '1h 20m', responseTime: 6, rating: 4.9, sla: 98, trend: 'up' },
-  { name: 'Mike Thompson', role: 'Support Agent', initials: 'MT', tickets: 256, avgResolution: '1h 45m', responseTime: 8, rating: 4.7, sla: 95, trend: 'up' },
-  { name: 'Lisa Chen', role: 'Senior Agent', initials: 'LC', tickets: 242, avgResolution: '1h 30m', responseTime: 7, rating: 4.8, sla: 96, trend: 'down' },
-  { name: 'James Wilson', role: 'Support Agent', initials: 'JW', tickets: 228, avgResolution: '1h 55m', responseTime: 9, rating: 4.6, sla: 94, trend: 'up' },
-  { name: 'Emily Davis', role: 'Support Agent', initials: 'ED', tickets: 215, avgResolution: '1h 50m', responseTime: 8, rating: 4.7, sla: 93, trend: 'down' },
-];
+import axios from 'axios';
 
 const AgentRanking = () => {
+  const [agents, setAgents] = useState([]);
   const [sortKey, setSortKey] = useState('tickets');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const sortedAgents = [...agentsData].sort((a, b) => {
-    if (sortKey === 'responseTime') return a[sortKey] - b[sortKey]; // lower is better
-    return b[sortKey] - a[sortKey]; // higher is better
+  const fetchAgents = async () => {
+    try {
+      const res = await axios.get('http://localhost:5000/api/users/agents', {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+      });
+
+      console.log('Response from /api/users/agents:', res.data); // Debug response
+
+      const processed = (res.data?.agents || []).map(agent => ({
+        name: agent.name,
+        role: agent.agentType || 'Support Agent',
+        initials: agent.name?.split(' ').map(n => n[0]).join('') || '??',
+        tickets: agent.assignedTickets?.length || 0,
+        avgResolution: 'N/A',
+        responseTime: 7,
+        rating: 4.5,
+        sla: parseInt(agent.stats?.resolution?.replace('%', '') || '0'),
+        trend: 'up',
+      }));
+
+      setAgents(processed);
+    } catch (err) {
+      console.error('Fetch failed:', err.response?.status, err.response?.data || err.message); // For Better error logging
+      setError('Failed to load agent data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAgents();
+  }, []);
+
+  const sortedAgents = [...agents].sort((a, b) => {
+    if (sortKey === 'responseTime') return a[sortKey] - b[sortKey];
+    return b[sortKey] - a[sortKey];
   });
+
+  if (loading) return <p>Loading...</p>;
+  if (error) return <p className="text-red-500">{error}</p>;
 
   return (
     <div className="bg-white p-6 rounded-2xl shadow">
@@ -80,4 +114,4 @@ const AgentRanking = () => {
   );
 };
 
-export default AgentRanking; 
+export default AgentRanking;

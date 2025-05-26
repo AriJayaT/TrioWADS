@@ -1,18 +1,36 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
 import { FaStar } from 'react-icons/fa';
 
-const ratings = [
-  { score: 5, count: 848 },
-  { score: 4, count: 274 },
-  { score: 3, count: 75 },
-  { score: 2, count: 37 },
-  { score: 1, count: 13 },
-];
-
-const totalResponses = ratings.reduce((sum, r) => sum + r.count, 0);
-const average = 4.8; // You can calculate it dynamically if needed
-
 const SatisfactionDistribution = () => {
+  const [ratings, setRatings] = useState([]);
+  const [average, setAverage] = useState(0);
+  const [totalResponses, setTotalResponses] = useState(0);
+  const [error, setError] = useState(null);
+
+  const fetchRatings = async () => {
+    try {
+      const res = await axios.get("http://localhost:5000/api/ratings/distribution", {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`
+        }
+      });
+
+      setRatings(res.data.distribution || []);
+      setAverage(res.data.average || 0);
+      setTotalResponses(res.data.totalResponses || 0);
+    } catch (err) {
+      console.error("Error fetching CSAT data:", err);
+      setError("Failed to load satisfaction data");
+    }
+  };
+
+  useEffect(() => {
+    fetchRatings();
+  }, []);
+
+  if (error) return <p className="text-red-500">{error}</p>;
+
   return (
     <div className="bg-white p-6 rounded-2xl shadow">
       <div className="flex justify-between items-start mb-4">
@@ -25,7 +43,10 @@ const SatisfactionDistribution = () => {
 
       <div className="space-y-3">
         {ratings.map((rating) => {
-          const percentage = ((rating.count / totalResponses) * 100).toFixed(0);
+          const percentage = totalResponses > 0
+            ? ((rating.count / totalResponses) * 100).toFixed(0)
+            : 0;
+
           return (
             <div key={rating.score} className="flex items-center gap-3 text-sm">
               <div className="w-4 text-right">{rating.score}</div>
@@ -45,4 +66,4 @@ const SatisfactionDistribution = () => {
   );
 };
 
-export default SatisfactionDistribution; 
+export default SatisfactionDistribution;

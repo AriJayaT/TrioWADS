@@ -10,6 +10,7 @@ import {
   submitRating,
   getAgentRatings,
   getTicketRating,
+  getTicketDistribution,
   removeTicketFromView
 } from '../controllers/ticketController.js';
 import { protect, authorize } from '../middleware/auth.js';
@@ -149,6 +150,7 @@ router.get('/stats', getTicketStats);
  *       404:
  *         description: Ticket not found
  */
+router.get('/distribution', authorize('admin', 'agent'), getTicketDistribution);
 router.get('/:id', getTicket);
 
 /**
@@ -363,5 +365,6 @@ router.get('/:id/rating', protect, getTicketRating);
  *         description: Ticket not found
  */
 router.put('/:id/remove', protect, authorize('admin', 'agent'), removeTicketFromView);
+
 
 export default router; 

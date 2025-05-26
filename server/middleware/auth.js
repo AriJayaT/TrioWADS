@@ -5,31 +5,33 @@ import jwt from 'jsonwebtoken';
  */
 export const protect = async (req, res, next) => {
   let token;
-  
+
   // Check if token exists in the authorization header (Bearer token)
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-    try {
-      // Get token from header
-      token = req.headers.authorization.split(' ')[1];
-      
-      // Verify token
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'jellycatsecret');
-      
-      // Add user from payload to request object
-      req.user = {
-        id: decoded.id,
-        role: decoded.role
-      };
-      
-      next();
-    } catch (error) {
-      console.error('Token verification error:', error.message);
-      res.status(401).json({ error: 'Not authorized, token failed' });
-    }
+  if (
+    req.headers.authorization &&
+    req.headers.authorization.startsWith('Bearer')
+  ) {
+    token = req.headers.authorization.split(' ')[1];
   }
-  
+
   if (!token) {
-    res.status(401).json({ error: 'Not authorized, no token provided' });
+    return res.status(401).json({ error: 'Not authorized, no token provided' });
+  }
+
+  try {
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'jellycatsecret');
+
+    // Add user from payload to request object
+    req.user = {
+      id: decoded.id,
+      role: decoded.role
+    };
+
+    return next();
+  } catch (error) {
+    console.error('Token verification error:', error.message);
+    return res.status(401).json({ error: 'Not authorized, token failed' });
   }
 };
 
@@ -41,13 +43,13 @@ export const authorize = (...roles) => {
     if (!req.user || !req.user.role) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
-    
+
     if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ 
+      return res.status(403).json({
         error: `User role ${req.user.role} is not authorized to access this resource`
       });
     }
-    
+
     next();
   };
-}; 
+};

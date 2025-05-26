@@ -1,28 +1,38 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { FaStar } from 'react-icons/fa';
 
-const feedbackData = [
-  {
-    name: 'Emily Parker',
-    time: '2 hours ago',
-    satisfaction: 'Very Satisfied',
-    message: 'Amazing customer service! The representative was incredibly helpful and solved my issue within minutes.',
-  },
-  {
-    name: 'Michael Chang',
-    time: '5 hours ago',
-    satisfaction: 'Satisfied',
-    message: 'Very satisfied with the support. Quick response and professional service.',
-  },
-  {
-    name: 'Sarah Wilson',
-    time: '1 day ago',
-    satisfaction: 'Very Satisfied',
-    message: 'Exceptional support team! They went above and beyond to help me.',
-  },
-];
-
 const RecentFeedback = () => {
+  const [feedbackData, setFeedbackData] = useState([]);
+  const [error, setError] = useState(null);
+
+  const timeAgo = (dateString) => {
+    const diff = Date.now() - new Date(dateString).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return `${mins} mins ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs} hours ago`;
+    const days = Math.floor(hrs / 24);
+    return `${days} days ago`;
+  };
+
+  useEffect(() => {
+    fetch("http://localhost:5000/api/ratings/recent", {
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem("token")}`
+      }
+    })
+      .then(res => res.json())
+      .then(data => {
+        setFeedbackData(data.feedback || []);
+      })
+      .catch(err => {
+        console.error("Feedback fetch failed", err);
+        setError("Could not load feedback");
+      });
+  }, []);
+
+  if (error) return <p className="text-red-500">{error}</p>;
+
   return (
     <div className="bg-white p-6 rounded-2xl shadow w-full">
       <div className="flex justify-between items-center mb-4">
@@ -35,7 +45,7 @@ const RecentFeedback = () => {
             <div className="flex justify-between items-center mb-1">
               <div>
                 <div className="font-semibold text-gray-900">{entry.name}</div>
-                <div className="text-xs text-gray-400">{entry.time}</div>
+                <div className="text-xs text-gray-400">{timeAgo(entry.time)}</div>
               </div>
               <div className="flex items-center gap-1 text-sm text-pink-500 font-medium">
                 {entry.satisfaction}
@@ -50,4 +60,4 @@ const RecentFeedback = () => {
   );
 };
 
-export default RecentFeedback; 
+export default RecentFeedback;

@@ -1,30 +1,53 @@
-import React from "react";
-
-const agents = [
-  {
-    initials: "SA",
-    name: "Sarah Anderson",
-    ticketsResolved: 284,
-    avgResolution: "1h 20m",
-    rating: 4.9,
-  },
-  {
-    initials: "MT",
-    name: "Mike Thompson",
-    ticketsResolved: 256,
-    avgResolution: "1h 45m",
-    rating: 4.7,
-  },
-  {
-    initials: "LC",
-    name: "Lisa Chen",
-    ticketsResolved: 242,
-    avgResolution: "1h 30m",
-    rating: 4.8,
-  },
-];
+import React, { useEffect, useState } from "react";
+import axios from "axios";
 
 const TopAgents = () => {
+  const [agents, setAgents] = useState([]);
+  const [error, setError] = useState(null);
+
+  const fetchAgents = async () => {
+    try {
+      const res = await axios.get("http://localhost:5000/api/users/agents", {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      });
+
+      const processed = (res.data?.agents || [])
+        .map((agent) => {
+          const initials = agent.name
+            .split(" ")
+            .map((n) => n[0])
+            .join("");
+
+          const closedTickets = agent.assignedTickets.filter(
+            (t) => t.status === "closed"
+          ).length;
+
+          return {
+            name: agent.name,
+            initials,
+            ticketsResolved: closedTickets,
+            avgResolution: "1h 20m", // placeholder
+            rating: 4.5, // placeholder
+          };
+        })
+        .sort((a, b) => b.ticketsResolved - a.ticketsResolved)
+        .slice(0, 3); // Top 3
+
+      setAgents(processed);
+    } catch (err) {
+      console.error("Failed to load top agents:", err.response?.data || err.message);
+      setError("Could not load top agents");
+    }
+  };
+
+  useEffect(() => {
+    fetchAgents();
+  }, []);
+
+  if (error) return <p className="text-red-500">{error}</p>;
+
   return (
     <div className="bg-white p-6 rounded-2xl shadow w-full h-full min-h-[420px]">
       <h2 className="text-lg font-semibold mb-4">Top Performing Agents</h2>
@@ -57,4 +80,4 @@ const TopAgents = () => {
   );
 };
 
-export default TopAgents; 
+export default TopAgents;

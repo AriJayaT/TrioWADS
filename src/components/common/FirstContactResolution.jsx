@@ -1,19 +1,43 @@
-import React from 'react';
-
-const resolutionData = [
-  { name: 'Sarah Anderson', score: 76 },
-  { name: 'Mike Thompson', score: 72 },
-  { name: 'Lisa Chen', score: 74 },
-  { name: 'James Wilson', score: 70 },
-  { name: 'Emily Davis', score: 71 },
-];
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
 
 const FirstContactResolution = () => {
+  const [agents, setAgents] = useState([]);
+  const [error, setError] = useState(null);
+
+  const fetchData = async () => {
+    try {
+      const res = await axios.get('http://localhost:5000/api/users/agents', {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+      });
+
+      const processed = (res.data?.agents || []).map(agent => ({
+        name: agent.name,
+        score: agent.stats?.firstContactResolution
+          ? parseInt(agent.stats.firstContactResolution.replace('%', ''))
+          : (agent.assignedTickets.length % 30 + 60), // 💡 fallback dummy score
+      }));
+
+      setAgents(processed);
+    } catch (err) {
+      console.error('Failed to fetch FCR data:', err.response?.data || err.message);
+      setError('Could not load data');
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  if (error) return <p className="text-red-500">{error}</p>;
+
   return (
     <div className="bg-white p-6 rounded-2xl shadow w-full">
       <h2 className="text-lg font-semibold text-gray-800 mb-4">First Contact Resolution</h2>
       <div className="space-y-4">
-        {resolutionData.map((agent, index) => (
+        {agents.map((agent, index) => (
           <div key={index}>
             <div className="flex justify-between mb-1">
               <span className="text-sm text-gray-800 font-medium">{agent.name}</span>
@@ -32,4 +56,4 @@ const FirstContactResolution = () => {
   );
 };
 
-export default FirstContactResolution; 
+export default FirstContactResolution;
