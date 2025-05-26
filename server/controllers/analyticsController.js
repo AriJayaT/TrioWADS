@@ -9,21 +9,13 @@ export const getResolutionByPriority = async (req, res) => {
     const result = [];
 
     for (const priority of priorities) {
-      const tickets = await Ticket.find({
-        status: 'closed',
-        priority: priority
-      });
-
+      const tickets = await Ticket.find({ status: 'closed', priority });
       const count = tickets.length;
-
       const totalResolutionTime = tickets.reduce((sum, ticket) => {
-        const created = new Date(ticket.createdAt).getTime();
-        const closed = new Date(ticket.updatedAt || ticket.closedAt || ticket.resolvedAt).getTime();
-        const duration = closed - created;
-        return sum + (duration > 0 ? duration : 0);
+        const diff = new Date(ticket.updatedAt || ticket.closedAt) - new Date(ticket.createdAt);
+        return sum + Math.max(diff, 0);
       }, 0);
-
-      const avgMs = count > 0 ? totalResolutionTime / count : 0;
+      const avgMs = count ? totalResolutionTime / count : 0;
       const avgMinutes = Math.floor(avgMs / 60000);
       const hours = Math.floor(avgMinutes / 60);
       const minutes = avgMinutes % 60;
@@ -47,20 +39,13 @@ export const getResolutionByPriority = async (req, res) => {
 export const getResolutionTimeTrend = async (req, res) => {
   try {
     const closedTickets = await Ticket.find({ status: 'closed' });
-
-    const hourlyData = Array.from({ length: 24 }, (_, i) => ({
-      hour: i,
-      totalMinutes: 0,
-      count: 0,
-    }));
+    const hourlyData = Array.from({ length: 24 }, (_, i) => ({ hour: i, totalMinutes: 0, count: 0 }));
 
     closedTickets.forEach(ticket => {
       const createdAt = new Date(ticket.createdAt);
-      const resolvedAt = new Date(ticket.updatedAt || ticket.closedAt || ticket.resolvedAt);
-
+      const resolvedAt = new Date(ticket.updatedAt || ticket.closedAt);
       const diff = (resolvedAt - createdAt) / 60000;
       const hour = createdAt.getHours();
-
       if (hourlyData[hour]) {
         hourlyData[hour].totalMinutes += diff;
         hourlyData[hour].count += 1;
@@ -69,7 +54,7 @@ export const getResolutionTimeTrend = async (req, res) => {
 
     const result = hourlyData.map(({ hour, totalMinutes, count }) => ({
       time: `${hour % 12 || 12}${hour < 12 ? 'AM' : 'PM'}`,
-      avgTime: count > 0 ? Math.round(totalMinutes / count) : 0
+      avgTime: count ? Math.round(totalMinutes / count) : 0
     })).filter(d => d.avgTime > 0);
 
     res.status(200).json({ success: true, data: result });
@@ -94,30 +79,21 @@ export const getTicketVolumeTrend = async (req, res) => {
     });
 
     const tickets = await Ticket.find({
-      createdAt: {
-        $gte: new Date(today.getFullYear(), today.getMonth(), today.getDate() - 6)
-      }
+      createdAt: { $gte: new Date(today.getFullYear(), today.getMonth(), today.getDate() - 6) }
     });
 
     tickets.forEach(ticket => {
       const created = new Date(ticket.createdAt).toISOString().split('T')[0];
       const resolved = ticket.status === 'closed' ? new Date(ticket.updatedAt).toISOString().split('T')[0] : null;
-
       const createdDay = days.find(d => d.dateKey === created);
       if (createdDay) createdDay.created++;
-
       if (resolved) {
         const resolvedDay = days.find(d => d.dateKey === resolved);
         if (resolvedDay) resolvedDay.resolved++;
       }
     });
 
-    const response = days.map(day => ({
-      name: day.label,
-      New: day.created,
-      Resolved: day.resolved
-    }));
-
+    const response = days.map(day => ({ name: day.label, New: day.created, Resolved: day.resolved }));
     res.status(200).json({ success: true, data: response });
   } catch (err) {
     console.error("Ticket volume trend error:", err);
@@ -130,75 +106,98 @@ export const getSystemOverview = async (req, res) => {
     const [agents, tickets, replies, ratings] = await Promise.all([
       User.find({ role: 'agent' }),
       Ticket.find(),
-      TicketReply.find(),
+      TicketReply.find().sort({ createdAt: 1 }),
       Rating.find()
     ]);
 
     const activeAgents = agents.filter(agent => agent.status !== 'offline').length;
     const agentTotal = agents.length;
+    const closedTickets = tickets.filter(t => t.status === 'closed');
+    const openTickets = tickets.filter(t => t.status !== 'closed');
 
     const avgResolutionTime = (() => {
-      const closed = tickets.filter(t => t.status === 'closed');
-      const total = closed.reduce((sum, t) => {
-        const diff = new Date(t.updatedAt || t.closedAt) - new Date(t.createdAt);
-        return sum + diff;
-      }, 0);
-      const avg = closed.length ? total / closed.length : 0;
+      const total = closedTickets.reduce((sum, t) => sum + (new Date(t.updatedAt || t.closedAt) - new Date(t.createdAt)), 0);
+      const avg = closedTickets.length ? total / closedTickets.length : 0;
       const mins = Math.floor(avg / 60000);
       return `${Math.floor(mins / 60)}h ${mins % 60}m`;
     })();
 
-    const avgCSAT = ratings.length
-      ? (ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length).toFixed(1)
-      : '0.0';
+    const avgFirstResponseTime = (() => {
+      const times = tickets.map(ticket => {
+        const reply = replies.find(r => r.ticket.toString() === ticket._id.toString());
+        return reply ? new Date(reply.createdAt) - new Date(ticket.createdAt) : null;
+      }).filter(Boolean);
+      const avg = times.length ? times.reduce((a, b) => a + b, 0) / times.length : 0;
+      const mins = Math.floor(avg / 60000);
+      return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+    })();
+
+    const slaWithin24h = (() => {
+      const count = closedTickets.filter(t => new Date(t.updatedAt || t.closedAt) - new Date(t.createdAt) <= 86400000).length;
+      return ((count / closedTickets.length) * 100).toFixed(1);
+    })();
+
+    const overdueTickets = openTickets.filter(t => new Date() - new Date(t.createdAt) > 86400000).length;
+    const avgCSAT = ratings.length ? (ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length).toFixed(1) : '0.0';
+    const responseRate = tickets.length > 0 ? ((new Set(replies.map(r => r.ticket.toString())).size / tickets.length) * 100).toFixed(1) : '0.0';
+
+    const metrics = {
+      activeAgents: `${activeAgents}/${agentTotal}`,
+      ticketVolume: tickets.length,
+      systemResponse: avgResolutionTime,
+      overallCSAT: avgCSAT
+    };
 
     res.json({
       success: true,
-      metrics: {
-        activeAgents: `${activeAgents}/${agentTotal}`,
-        ticketVolume: tickets.length,
-        systemResponse: avgResolutionTime,
-        overallCSAT: avgCSAT
+      metrics,
+      overview: {
+        avgResolutionTime,
+        totalTickets: tickets.length,
+        customerSatisfaction: avgCSAT,
+        resolutionTrend: "-12%",
+        resolutionTrendIsGood: false,
+        responseTrend: "-18%",
+        responseTrendIsGood: false,
+        satisfactionTrend: "+0.3",
+        ticketsTrend: "+5%"
+      },
+      resolution: {
+        avgResolutionTime,
+        firstResponseTime: avgFirstResponseTime,
+        withinSLA: `${slaWithin24h}%`,
+        overdueTickets,
+        resolutionTrend: "-12%",
+        resolutionTrendIsGood: false,
+        responseTrend: "-18%",
+        responseTrendIsGood: false,
+        slaTrend: "+2.4%",
+        overdueTrend: "+5",
+        overdueTrendIsGood: false
+      },
+      performance: {
+        teamSatisfaction: avgCSAT,
+        avgResponseTime: avgFirstResponseTime,
+        avgResolutionTime,
+        totalTickets: tickets.length,
+        satisfactionTrend: "+0.2",
+        responseTrend: "-0.5m",
+        responseTrendIsGood: false,
+        resolutionTrend: "-15m",
+        resolutionTrendIsGood: false,
+        ticketsTrend: "+82"
+      },
+      satisfaction: {
+        score: avgCSAT,
+        scoreTrend: "+0.2",
+        totalResponses: ratings.length,
+        responsesTrend: "+12%",
+        responseRate: `${responseRate}%`,
+        rateTrend: "+3%"
       }
     });
   } catch (err) {
     console.error("Overview fetch error:", err);
     res.status(500).json({ error: "Failed to load system overview" });
-  }
-};
-
-// This is the added Ticket Distribution by Category
-export const getTicketDistributionByCategory = async (req, res) => {
-  try {
-    const categories = [
-      'Product Issues',
-      'Orders & Shipping',
-      'Billing & Payments',
-      'Account Management',
-      'General Inquiries'
-    ];
-
-    const result = await Promise.all(categories.map(async (name) => {
-      const tickets = await Ticket.find({ category: name });
-
-      const count = tickets.length;
-
-      // Dummy percentage change for now
-      const change = Math.floor(Math.random() * 10 - 5); // -5 to +4
-      const changeType = change >= 0 ? 'positive' : 'negative';
-      const formattedChange = `${change >= 0 ? '+' : ''}${change}%`;
-
-      return {
-        name,
-        count,
-        change: formattedChange,
-        changeType
-      };
-    }));
-
-    res.status(200).json({ success: true, categories: result });
-  } catch (err) {
-    console.error("Ticket category distribution error:", err);
-    res.status(500).json({ error: "Failed to fetch ticket distribution data" });
   }
 };

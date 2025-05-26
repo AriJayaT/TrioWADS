@@ -15,8 +15,11 @@ const SystemOverview = () => {
     })
       .then(res => res.json())
       .then(json => {
-        if (json.success) setMetrics(json.metrics);
-        else setError("Failed to load overview metrics");
+        if (json.success && json.metrics) {
+          setMetrics(json.metrics);
+        } else {
+          setError("Failed to load overview metrics");
+        }
       })
       .catch(err => {
         console.error("System overview fetch failed", err);
@@ -32,7 +35,7 @@ const SystemOverview = () => {
       icon: <FaUsers className="text-lg text-gray-500" />,
       value: metrics.activeAgents,
       label: 'Active Agents',
-      change: '+2', // Optional: you can add logic for real change
+      change: '+1',
       changeType: 'positive'
     },
     {
