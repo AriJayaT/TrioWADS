@@ -1,28 +1,22 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FaBell, FaTachometerAlt, FaUsers, FaChartBar, FaBars, FaTimes, FaUserCircle, FaSignOutAlt, FaChevronDown } from 'react-icons/fa';
+import { FaBell, FaTachometerAlt, FaTicketAlt, FaBars, FaTimes, FaUserCircle, FaSignOutAlt, FaChevronDown, FaUserShield } from 'react-icons/fa';
 import logo from '/src/assets/logo.jpg';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
-const Navbar = ({ 
-  activeItem = 'Dashboard', 
-  title = "YipHelp Admin",
-  notifications = 2
-}) => {
+const AdminNavbar = ({ activeItem = 'Dashboard', title = 'YipHelp Admin', notifications = 0 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const navigate = useNavigate();
   const profileRef = useRef(null);
   const { user, logout } = useAuth();
 
-  // Handle clicking outside the profile dropdown
   useEffect(() => {
     function handleClickOutside(event) {
       if (profileRef.current && !profileRef.current.contains(event.target)) {
         setProfileDropdownOpen(false);
       }
     }
-
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
@@ -38,15 +32,12 @@ const Navbar = ({
   };
 
   const handleLogout = () => {
-    // Call the logout function from AuthContext
     logout();
-    // Navigate to landing page after a short delay
     setTimeout(() => {
       navigate('/');
     }, 50);
   };
 
-  // Get the user's initials
   const getUserInitials = () => {
     if (!user || !user.name) return '?';
     return user.name.split(' ').map(name => name[0]).join('').toUpperCase();
@@ -54,8 +45,7 @@ const Navbar = ({
 
   const menuItems = [
     { name: 'Dashboard', icon: <FaTachometerAlt />, path: '/admin' },
-    { name: 'Agents', icon: <FaUsers />, path: '/admin/agents' },
-    { name: 'Analytics', icon: <FaChartBar />, path: '/admin/analytics' }
+    { name: 'Tickets', icon: <FaTicketAlt />, path: '/admin/tickets' }
   ];
 
   return (
@@ -68,7 +58,7 @@ const Navbar = ({
             <img src={logo} alt="Avatar" className="object-cover w-full h-full" />
           </div>
           <span className="ml-3 text-base font-bold hidden lg:block">{title}</span>
-          <span className="ml-3 text-base font-bold hidden md:block lg:hidden">Support Admin</span>
+          <span className="ml-3 text-base font-bold hidden md:block lg:hidden">Admin</span>
           <span className="ml-3 text-base font-bold md:hidden">Admin</span>
         </div>
 
@@ -100,7 +90,6 @@ const Navbar = ({
               </span>
             )}
           </div>
-          
           {/* Profile with dropdown */}
           <div className="relative" ref={profileRef}>
             <div 
@@ -127,10 +116,9 @@ const Navbar = ({
                   <p className="text-sm font-medium">{user?.name || 'Admin'}</p>
                   <FaChevronDown className="ml-1 text-xs text-gray-500" />
                 </div>
-                <p className="text-xs text-gray-500">{user?.role || 'Administrator'}</p>
+                <p className="text-xs text-gray-500">Administrator</p>
               </div>
             </div>
-            
             {/* Profile Dropdown Menu */}
             {profileDropdownOpen && (
               <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
@@ -192,4 +180,4 @@ const Navbar = ({
   );
 };
 
-export default Navbar;
+export default AdminNavbar; 

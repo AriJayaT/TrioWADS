@@ -7,64 +7,23 @@ import { OAuth2Client } from 'google-auth-library';
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-// Remove the map to store pending verifications as we are disabling email verification for now
-// const pendingVerifications = new Map();
-const pendingVerifications = new Map(); // Keep the map for verifyEmail if needed later, but registration won't use it.
+// Debug logging
+console.log('Environment Variables (authController initial load):', {
+  NODE_ENV: process.env.NODE_ENV,
+  EMAIL_USER: process.env.EMAIL_USER,
+  EMAIL_PASSWORD: process.env.EMAIL_PASSWORD ? 'Set' : 'Not Set',
+  EMAIL_PASSWORD_LENGTH: process.env.EMAIL_PASSWORD ? process.env.EMAIL_PASSWORD.length : 0
+});
 
-// Remove emailConfigs as we will use a single Mailgun transporter
-// const emailConfigs = {
-//   gmail: {
-//     host: 'smtp.gmail.com',
-//     port: 587,
-//     secure: false
-//   },
-//   outlook: {
-//     host: 'smtp-mail.outlook.com',
-//     port: 587,
-//     secure: false
-//   },
-//   yahoo: {
-//     host: 'smtp.mail.yahoo.com',
-//     port: 587,
-//     secure: false
-//   },
-//   hotmail: {
-//     host: 'smtp-mail.outlook.com',
-//     port: 587,
-//     secure: false
-//   }
-// };
-
-// Remove getEmailProvider as we use a single Mailgun sender
-// const getEmailProvider = (email) => {
-//   const domain = email.split('@')[1].toLowerCase();
-//   if (domain.includes('gmail')) return 'gmail';
-//   if (domain.includes('outlook') || domain.includes('hotmail')) return 'outlook';
-//   if (domain.includes('yahoo')) return 'yahoo';
-//   return 'gmail'; // Default to Gmail if unknown
-// };
-
-// Configure nodemailer to use Mailgun
-const createTransporter = () => {
-  console.log('Attempting to create Mailgun transporter with:');
-  console.log(`SMTP Server: ${process.env.MAILGUN_SMTP_SERVER}`);
-  console.log(`SMTP Port: ${process.env.MAILGUN_SMTP_PORT}`);
-  console.log(`SMTP Login: ${process.env.MAILGUN_SMTP_LOGIN}`);
-  console.log(`SMTP Password: ${process.env.MAILGUN_SMTP_PASSWORD ? '********' : 'NOT SET'}`); // Log presence, not password itself
-
-  return nodemailer.createTransport({
-    host: process.env.MAILGUN_SMTP_SERVER,
-    port: process.env.MAILGUN_SMTP_PORT,
-    secure: false, // true for 465, false for other ports
-    auth: {
-      user: process.env.MAILGUN_SMTP_LOGIN,
-      pass: process.env.MAILGUN_SMTP_PASSWORD
-    },
-    tls: {
-      rejectUnauthorized: false // Use this in development; set to true in production with valid certs
-    }
-  });
-};
+// Password validation utility
+function validatePassword(password) {
+  if (password.length < 8) return "Password must be at least 8 characters";
+  if (!/[A-Z]/.test(password)) return "Password must contain an uppercase letter";
+  if (!/[a-z]/.test(password)) return "Password must contain a lowercase letter";
+  if (!/[0-9]/.test(password)) return "Password must contain a number";
+  if (!/[\W_]/.test(password)) return "Password must contain a special character";
+  return null;
+}
 
 /**
  * @route POST /api/auth/google
@@ -73,6 +32,7 @@ const createTransporter = () => {
  */
 export const googleLogin = async (req, res) => {
   const { idToken } = req.body;
+  const { role } = req.body;
 
   if (!idToken) {
     return res.status(400).json({ error: 'Google ID token is required.' });
@@ -86,6 +46,7 @@ export const googleLogin = async (req, res) => {
     const payload = ticket.getPayload();
     const { sub, email, name, picture } = payload;
 
+    console.log(`Attempting to find user with email: ${email}`);
     let user = await User.findOne({ email });
 
     if (user) {
@@ -94,19 +55,25 @@ export const googleLogin = async (req, res) => {
     } else {
       // User does not exist, create a new one
       console.log(`User ${email} not found, creating new user via Google login.`);
-      // Note: For Google sign-in, we don't have a password. You might want to handle this
-      // differently depending on your application's requirements (e.g., disable password login
-      // for Google users, or set a random password and force a reset).
-      // For simplicity, we'll create the user without a password here.
+      console.log(`Creating user with data: `, {
+        name: name,
+        email: email,
+        profileImage: picture,
+        isVerified: true, // Google verified emails
+        role: role || 'customer',
+        googleId: sub,
+        authMethod: 'google' // Set auth method to google
+      });
       user = await User.create({
         name: name,
         email: email,
         profileImage: picture,
         isVerified: true, // Google verified emails
-        // Default role for new users via Google login. Adjust if needed.
-        role: 'customer',
-        googleId: sub, // Store Google user ID
+        role: role || 'customer',
+        googleId: sub,
+        authMethod: 'google' // Set auth method to google
       });
+      console.log(`New user created with ID: ${user._id}`);
     }
 
     // Generate JWT token for the user
@@ -122,7 +89,6 @@ export const googleLogin = async (req, res) => {
         role: user.role,
         agentType: user.agentType,
         profileImage: user.profileImage,
-        // Include other relevant user data here
       },
     });
 
@@ -137,9 +103,7 @@ export const googleLogin = async (req, res) => {
  * @access Public
  */
 export const sendVerificationCode = async (req, res) => {
-  // This function is currently not used in the signup flow after removing email verification.
-  // It can be kept or removed depending on future needs.
-  res.status(501).json({ error: 'Email verification code sending is currently disabled.' });
+   res.status(501).json({ error: 'Email verification code sending is currently disabled.' });
 };
 
 /**
@@ -149,7 +113,7 @@ export const sendVerificationCode = async (req, res) => {
 export const register = async (req, res) => {
   try {
     const { name, email, password, phone, role } = req.body;
-    console.log(`Registration attempt for email: ${email}`);
+    console.log(`Registration attempt for email: ${email} with role: ${role}`);
 
     const existingUser = await User.findOne({ email });
     if (existingUser) {
@@ -157,40 +121,84 @@ export const register = async (req, res) => {
       return res.status(400).json({ error: 'User already exists with this email' });
     }
 
-    // Create the user directly, skipping email verification
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      return res.status(400).json({ error: passwordError });
+    }
+
+    // Create the user (initially unverified)
     const user = await User.create({
       name,
       email,
       password,
       phone,
       role: role || 'customer',
-      // Set default agentType to Junior if role is agent
       agentType: role === 'agent' ? 'Junior' : undefined,
-      isVerified: true // Mark as verified since we are skipping email verification
+      isVerified: false, // Mark as unverified
     });
 
-    // Generate JWT token
-    const jwtToken = user.getSignedJwtToken();
+    // Generate verification token and save user
+    const verificationToken = user.generateEmailVerificationToken();
+    await user.save({ validateBeforeSave: false });
+
+    // Create verification URL
+    const verifyURL = `${req.protocol}://${req.get('host')}/api/auth/verify-email/${verificationToken}`;
+
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: user.email,
+      subject: 'Verify Your Email',
+      text: `Please verify your email by clicking on the link: ${verifyURL}`,
+    };
+
+    // Create transporter here, after environment variables are loaded by index.js
+    const transporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false, // use TLS
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASSWORD
+      },
+      tls: {
+        rejectUnauthorized: false // Accept self-signed certificates
+      },
+      debug: true, // Enable debug output
+      logger: true // Enable logger
+    });
+
+    // Verify transporter configuration before sending (optional in production, good for debugging)
+    transporter.verify(function(error, success) {
+      if (error) {
+        console.error('SMTP Server Error during sendMail:', error);
+        console.error('Error details:', {
+          code: error.code,
+          command: error.command,
+          response: error.response,
+          responseCode: error.responseCode,
+          stack: error.stack
+        });
+      } else {
+        console.log('SMTP Server is ready to send message (verified during sendMail).');
+      }
+    });
+
+    transporter.sendMail(mailOptions, (error, info) => {
+      if (error) {
+        console.error('Error sending verification email:', error);
+        // In a real app, you might want to handle this more robustly
+      } else {
+        console.log('Verification email sent:', info.response);
+      }
+    });
 
     res.status(201).json({
       success: true,
-      token: jwtToken,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        agentType: user.agentType,
-        profileImage: user.profileImage,
-        // Include phone in the response if needed by the frontend
-        phone: user.phone
-      },
-      message: 'Registration successful!' // Optional success message
+      message: 'Registration successful. Please check your email for verification.',
     });
 
   } catch (error) {
     console.error('Registration error:', error);
-    // Provide a generic server error message
     res.status(500).json({ error: 'Server error during registration' });
   }
 };
@@ -200,49 +208,60 @@ export const register = async (req, res) => {
  * @access Public
  */
 export const verifyEmail = async (req, res) => {
-  // This function can be kept for potential future use but is not part of the current signup flow.
-   res.status(501).json({ error: 'Email verification is currently disabled.' });
+  console.log('Attempting to verify email...');
+  console.log('Received token:', req.params.token);
+  try {
+    // Get hashed token
+    const emailVerificationToken = crypto
+      .createHash('sha256')
+      .update(req.params.token)
+      .digest('hex');
 
-//  try {
-//    const { token } = req.params;
-//
-//    // Get pending verification
-//    const pendingVerification = pendingVerifications.get(token);
-//    if (!pendingVerification || Date.now() > pendingVerification.expires) {
-//      return res.status(400).json({ error: 'Invalid or expired verification link' });
-//    }
-//
-//    // Create the user
-//    const user = await User.create({
-//      name: pendingVerification.name,
-//      email: pendingVerification.email,
-//      password: pendingVerification.password,
-//      phone: pendingVerification.phone,
-//      role: pendingVerification.role,
-//      isVerified: true
-//    });
-//
-//    // Remove the pending verification
-//    pendingVerifications.delete(token);
-//
-//    // Generate JWT token
-//    const jwtToken = user.getSignedJwtToken();
-//
-//    res.status(201).json({
-//      success: true,
-//      token: jwtToken,
-//      user: {
-//        id: user._id,
-//        name: user.name,
-//        email: user.email,
-//        role: user.role,
-//        profileImage: user.profileImage
-//      }
-//    });
-//  } catch (error) {
-//    console.error('Email verification error:', error);
-//    res.status(500).json({ error: 'Server error during email verification' });
-//  }
+    console.log('Hashed token:', emailVerificationToken);
+
+    const user = await User.findOne({
+      emailVerificationToken,
+      emailVerificationExpire: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      console.log('User not found or token invalid/expired.');
+      return res.status(400).json({ error: 'Invalid or expired verification token' });
+    }
+
+    console.log('User found. Verifying...', user.email);
+
+    // Set user to verified and clear token fields
+    user.isVerified = true;
+    user.emailVerificationToken = undefined;
+    user.emailVerificationExpire = undefined;
+    await user.save({ validateBeforeSave: false });
+
+    console.log('User verified successfully!', user.email);
+
+    // Generate JWT token for immediate login after verification
+    const token = user.getSignedJwtToken();
+
+    res.status(200).json({
+      success: true,
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        agentType: user.agentType,
+        profileImage: user.profileImage,
+        isVerified: user.isVerified,
+      },
+      message: 'Email verified successfully. You can now log in.'
+    });
+
+  } catch (error) {
+    console.error('Email verification error:', error);
+    res.status(500).json({ error: 'Server error during email verification' });
+  }
 };
 
 /**
@@ -264,11 +283,18 @@ export const login = async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    // Check if email is verified
+    if (!user.isVerified) {
+      return res.status(401).json({ error: 'Please verify your email address before logging in.' });
+    }
+
     const isMatch = await user.matchPassword(password);
     if (!isMatch) {
       console.log('Password does not match');
       return res.status(401).json({ error: 'Invalid credentials' });
     }
+
+    console.log(`User ${email} logging in with role: ${user.role}`);
 
     const token = user.getSignedJwtToken();
 
@@ -282,9 +308,11 @@ export const login = async (req, res) => {
         phone: user.phone,
         role: user.role,
         agentType: user.agentType,
-        profileImage: user.profileImage
-      }
+        profileImage: user.profileImage,
+        isVerified: user.isVerified,
+      },
     });
+
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Server error during login' });
@@ -297,8 +325,9 @@ export const login = async (req, res) => {
  */
 export const getCurrentUser = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
-    
+    // Select the isVerified field
+    const user = await User.findById(req.user.id).select('+isVerified');
+
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -313,9 +342,11 @@ export const getCurrentUser = async (req, res) => {
         role: user.role,
         agentType: user.agentType,
         profileImage: user.profileImage,
-        createdAt: user.createdAt
-      }
+        createdAt: user.createdAt,
+        isVerified: user.isVerified, // Include isVerified in the response
+      },
     });
+
   } catch (error) {
     console.error('Get current user error:', error);
     res.status(500).json({ error: 'Server error' });
@@ -336,16 +367,25 @@ export const updateProfile = async (req, res) => {
 
     const { name, email, phone, profileImage } = req.body;
 
-    // Check if email is being updated and if it already exists
     if (email && email !== user.email) {
       const existingUser = await User.findOne({ email });
       if (existingUser) {
         return res.status(400).json({ error: 'Email already exists' });
       }
+      // If email is changed, mark as unverified
+      user.email = email;
+      user.isVerified = false;
+      user.emailVerificationToken = undefined; // Clear old token
+      user.emailVerificationExpire = undefined;
+
+      // In a real app, you would send a new verification email here
+      // For now, just mark as unverified
+       console.log(`Email changed for user ${user._id}, marked as unverified.`);
+    } else {
+       user.email = email || user.email;
     }
 
     user.name = name || user.name;
-    user.email = email || user.email;
     user.phone = phone || user.phone;
     user.profileImage = profileImage || user.profileImage;
 
@@ -361,9 +401,11 @@ export const updateProfile = async (req, res) => {
         role: user.role,
         agentType: user.agentType,
         profileImage: user.profileImage,
-        createdAt: user.createdAt
-      }
+        createdAt: user.createdAt,
+        isVerified: user.isVerified, // Include isVerified in the response
+      },
     });
+
   } catch (error) {
     console.error('Update profile error:', error);
     res.status(500).json({ error: 'Server error' });
@@ -400,8 +442,135 @@ export const changePassword = async (req, res) => {
       success: true,
       message: 'Password updated successfully'
     });
+
   } catch (error) {
     console.error('Change password error:', error);
     res.status(500).json({ error: 'Server error' });
   }
+};
+
+/**
+ * @route POST /api/auth/forgot-password
+ * @desc Request password reset email
+ * @access Public
+ */
+export const forgotPassword = async (req, res) => {
+  const { email } = req.body;
+
+  try {
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      console.log(`Forgot password attempt for non-existent user: ${email}`);
+      return res.status(404).json({ error: 'User not found with that email' });
+    }
+
+    // Generate reset token and save user
+    const resetToken = user.getResetPasswordToken();
+    await user.save({ validateBeforeSave: false });
+
+    // Create reset URL
+    const resetURL = `${req.protocol}://${req.get('host').replace(':5000', ':5173')}/reset-password/${resetToken}`;
+
+    // Setup email data
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: user.email,
+      subject: 'Password Reset Request',
+      text: `You are receiving this because you (or someone else) has requested the reset of the password for your account.\n\nPlease click on the following link, or paste this into your browser to complete the process:\n\n${resetURL}\n\nIf you did not request this, please ignore this email and your password will remain unchanged.`,
+    };
+
+     // Create transporter here, after environment variables are loaded by index.js
+     const transporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false, // use TLS
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASSWORD
+      },
+      tls: {
+        rejectUnauthorized: false // Accept self-signed certificates
+      },
+      debug: true, // Enable debug output
+      logger: true // Enable logger
+    });
+
+    // Verify transporter configuration before sending (optional in production, good for debugging)
+    transporter.verify(function(error, success) {
+      if (error) {
+        console.error('SMTP Server Error during sendMail (Forgot Password):', error);
+        console.error('Error details:', {
+          code: error.code,
+          command: error.command,
+          response: error.response,
+          responseCode: error.responseCode,
+          stack: error.stack
+        });
+      } else {
+        console.log('SMTP Server is ready to send message (verified during sendMail - Forgot Password).');
+      }
+    });
+
+    transporter.sendMail(mailOptions, (error, info) => {
+      if (error) {
+        console.error('Error sending password reset email:', error);
+        // In a real app, you might want to handle this more robustly
+        // Depending on your requirements, you might still send a 200 response to not leak user existence
+        return res.status(500).json({ error: 'Error sending password reset email' });
+      } else {
+        console.log('Password reset email sent:', info.response);
+        res.status(200).json({ success: true, message: 'Password reset email sent' });
+      }
+    });
+
+
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ error: 'Server error during forgot password request' });
+  }
+};
+
+/**
+ * @route PUT /api/auth/reset-password/:resettoken
+ * @access Public
+ */
+export const resetPassword = async (req, res) => {
+  // Get hashed token
+  const resetPasswordToken = crypto
+    .createHash('sha256')
+    .update(req.params.resettoken)
+    .digest('hex');
+
+  const user = await User.findOne({
+    resetPasswordToken,
+    resetPasswordExpire: { $gt: Date.now() }
+  });
+
+  if (!user) {
+    return res.status(400).json({ error: 'Invalid Token' });
+  }
+
+  // Validate new password
+  const passwordError = validatePassword(req.body.password);
+  if (passwordError) {
+    return res.status(400).json({ error: passwordError });
+  }
+
+  // Set new password
+  user.password = req.body.password;
+  user.resetPasswordToken = undefined;
+  user.resetPasswordExpire = undefined;
+  await user.save();
+
+  const token = user.getSignedJwtToken();
+
+  res.status(200).json({
+    success: true,
+    token
+  });
+};
+
+export const logout = (req, res) => {
+  res.status(200).json({ success: true, data: {} });
 }; 

@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { FaBell, FaTachometerAlt, FaUsers, FaChartBar, FaSignOutAlt, FaUser, FaClock } from 'react-icons/fa';
 import { FaCheckCircle, FaRegClock, FaStar, FaTicketAlt, FaPlus } from 'react-icons/fa';
 import { Link, useNavigate } from 'react-router-dom';
 import logo from '/src/assets/logo.jpg';
 import { useAuth } from '../../../context/AuthContext';
 import ticketService from '../../../services/api/ticketService';
+import { getNotifications, markNotificationAsRead } from '../../../services/api/notificationService';
+import NotificationBell from '../../common/NotificationBell';
 
 const AgentDashboard = () => {
   const navigate = useNavigate();
@@ -25,6 +27,13 @@ const AgentDashboard = () => {
   const [recentActivities, setRecentActivities] = useState([]);
   const [upcomingTasks, setUpcomingTasks] = useState([]);
   const [unassignedCount, setUnassignedCount] = useState(0);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const notifRef = useRef(null);
+  const profileRef = useRef(null);
+  // Notifications state (to be filled by API)
+  const [notifications, setNotifications] = useState([]);
+  const [loadingNotifs, setLoadingNotifs] = useState(true);
+  const unreadCount = notifications.filter(n => !n.read).length;
   
   useEffect(() => {
     fetchDashboardData();
@@ -208,7 +217,9 @@ const AgentDashboard = () => {
 
   const handleLogout = () => {
     logout();
-    navigate('/');
+    setTimeout(() => {
+      navigate('/');
+    }, 50);
   };
 
   // Get user's initials for avatar display
@@ -243,6 +254,43 @@ const AgentDashboard = () => {
     }
   };
 
+  // Fetch notifications on mount
+  useEffect(() => {
+    const fetchNotifs = async () => {
+      try {
+        setLoadingNotifs(true);
+        const notifs = await getNotifications();
+        setNotifications(notifs);
+      } catch (err) {
+        setNotifications([]);
+      } finally {
+        setLoadingNotifs(false);
+      }
+    };
+    if (user && user.id) fetchNotifs();
+  }, [user]);
+
+  // Mark all as read when dropdown is opened
+  const handleNotifDropdown = async () => {
+    if (!notifOpen) {
+      const unread = notifications.filter(n => !n.read);
+      await Promise.all(unread.map(n => markNotificationAsRead(n._id)));
+      setNotifications(notifications.map(n => ({ ...n, read: true })));
+    }
+    setNotifOpen(!notifOpen);
+  };
+
+  // Close profile dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (profileRef.current && !profileRef.current.contains(event.target)) {
+        setProfileMenu(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-screen">
@@ -270,7 +318,7 @@ const AgentDashboard = () => {
   return (
     <div className="min-h-screen bg-pink-50">
       {/* Header/Navbar */}
-      <header className="bg-white border-b border-gray-200 shadow-sm">
+      <header className="bg-white border-b border-gray-200 shadow-sm fixed top-0 left-0 w-full z-30">
         <div className="flex h-14 items-center px-4 justify-between">
           {/* Logo & Title */}
           <div className="flex items-center">
@@ -292,16 +340,12 @@ const AgentDashboard = () => {
 
           {/* Profile & Notifications */}
           <div className="flex items-center gap-4">
-            <div className="relative">
-              <FaBell className="text-gray-500" />
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-xs flex items-center justify-center">
-                {unassignedCount}
-              </span>
-            </div>
-            <div className="relative">
+            {/* Notification Bell */}
+            <NotificationBell />
+            <div className="relative" ref={profileRef}>
               <div 
                 className="flex items-center cursor-pointer"
-                onClick={() => setProfileMenu(!profileMenu)}
+                onClick={() => setProfileMenu((open) => !open)}
               >
                 <div className="w-8 h-8 bg-pink-200 rounded-full flex items-center justify-center text-sm font-medium">
                   {user?.profileImage ? (
@@ -323,7 +367,6 @@ const AgentDashboard = () => {
                   <p className="text-xs text-gray-500">{user?.agentType || 'Junior'} Agent</p>
                 </div>
               </div>
-              
               {/* Profile Dropdown */}
               {profileMenu && (
                 <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10">
@@ -346,6 +389,8 @@ const AgentDashboard = () => {
 
       {/* Main Content */}
       <main className="p-4 md:p-6 max-w-7xl mx-auto">
+        {/* Add padding top to prevent content being hidden behind fixed navbar */}
+        <div style={{ height: '56px' }} />
         {/* Page Header */}
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold">Agent Dashboard</h1>

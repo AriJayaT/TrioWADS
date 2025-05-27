@@ -56,50 +56,57 @@ const authService = {
     try {
       const response = await apiClient.post('/auth/login', credentials);
       
-      // Store token and user in localStorage
-      if (response.data.token) {
-        localStorage.setItem('authToken', response.data.token);
-        localStorage.setItem('user', JSON.stringify(response.data.user));
+      // Don't store anything until we validate the role
+      const { token, user } = response.data;
+      
+      if (!token || !user) {
+        throw new Error('Invalid response from server');
       }
+      
+      // Store token and user in localStorage
+      localStorage.setItem('authToken', token);
+      localStorage.setItem('user', JSON.stringify(user));
       
       return response.data;
     } catch (error) {
+      // Clear any partial data if login fails
+      authService.logout();
       throw error.response?.data?.error || 'Login failed';
     }
   },
   
   /**
    * Login with Google
+   * @param {Object} credentialResponse - The credential response from Google Login
+   * @param {string} role - The intended role for the user
    * @returns {Promise<Object>} - User data and token
    */
-  loginWithGoogle: async () => {
-    if (GOOGLE_CLIENT_ID === 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com') {
-      throw new Error('Google Client ID is not configured.');
-    }
-
+  loginWithGoogle: async (credentialResponse, role) => {
     try {
-      await authService.loadGoogleApiClient();
+      const idToken = credentialResponse.credential;
+      if (!idToken) {
+        throw new Error('No ID token received from Google.');
+      }
 
-      // Initialize OAuth2Client here after gapi is loaded
-      const { OAuth2Client } = await import('google-auth-library');
-      const client = new OAuth2Client(GOOGLE_CLIENT_ID);
+      // Send the ID token and role to your backend for verification and authentication
+      const response = await apiClient.post('/auth/google', { idToken, role });
 
-      const auth2 = window.gapi.auth2.getAuthInstance();
-      const googleUser = await auth2.signIn();
-      const idToken = googleUser.getAuthResponse().id_token;
-
-      // Send the token to your backend
-      const response = await apiClient.post('/auth/google', { idToken });
-      
       // Store token and user in localStorage
       if (response.data.token) {
         localStorage.setItem('authToken', response.data.token);
         localStorage.setItem('user', JSON.stringify(response.data.user));
+        // We don't get role directly from Google here, will need to fetch user or rely on backend response structure
+        // Assuming backend response includes user role:
+         if (response.data.user && response.data.user.role) {
+             localStorage.setItem('userRole', response.data.user.role);
+         }
       }
-      
+
       return response.data;
     } catch (error) {
       console.error('Google login failed:', error);
+      // Clear any partial data if login fails
+      authService.logout();
       throw error.response?.data?.error || 'Google login failed';
     }
   },
@@ -114,16 +121,22 @@ const authService = {
    */
   register: async (userData) => {
     try {
+      // Clear any existing auth data before registration
+      authService.logout();
+      
       const response = await apiClient.post('/auth/register', userData);
       
       // Store token and user in localStorage
       if (response.data.token) {
         localStorage.setItem('authToken', response.data.token);
         localStorage.setItem('user', JSON.stringify(response.data.user));
+        localStorage.setItem('userRole', userData.role);
       }
       
       return response.data;
     } catch (error) {
+      // Clear any partial data if registration fails
+      authService.logout();
       throw error.response?.data?.error || 'Registration failed';
     }
   },
@@ -134,6 +147,7 @@ const authService = {
   logout: () => {
     localStorage.removeItem('authToken');
     localStorage.removeItem('user');
+    localStorage.removeItem('userRole');
   },
   
   /**
@@ -235,9 +249,50 @@ const authService = {
   verifyEmail: async (token) => {
     try {
       const response = await apiClient.get(`/auth/verify-email/${token}`);
+      // Assuming the backend response includes user data and token after verification
+      if (response.data.token && response.data.user) {
+        localStorage.setItem('authToken', response.data.token);
+        localStorage.setItem('user', JSON.stringify(response.data.user));
+        // Also update the role if it's included in the response
+        if (response.data.user.role) {
+          localStorage.setItem('userRole', response.data.user.role);
+        }
+      }
       return response.data;
     } catch (error) {
-      throw error.response?.data?.error || 'Failed to verify email';
+      console.error('Email verification failed:', error);
+      throw error.response?.data?.error || 'Email verification failed';
+    }
+  },
+
+  /**
+   * Request a password reset email
+   * @param {string} email - User's email address
+   * @returns {Promise<Object>} - Success message
+   */
+  forgotPassword: async (email) => {
+    try {
+      const response = await apiClient.post('/auth/forgot-password', { email });
+      return response.data;
+    } catch (error) {
+      console.error('Forgot password request failed:', error);
+      throw error.response?.data?.error || 'Forgot password request failed';
+    }
+  },
+
+  /**
+   * Reset user password using token
+   * @param {string} token - The reset password token
+   * @param {string} password - The new password
+   * @returns {Promise<Object>} - Success message and potentially new token
+   */
+  resetPassword: async (token, password) => {
+    try {
+      const response = await apiClient.put(`/auth/reset-password/${token}`, { password });
+      return response.data;
+    } catch (error) {
+      console.error('Password reset failed:', error);
+      throw error.response?.data?.error || 'Password reset failed';
     }
   }
 };

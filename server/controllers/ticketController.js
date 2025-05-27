@@ -3,6 +3,7 @@ import TicketReply from '../models/TicketReply.js';
 import User from '../models/User.js';
 import mongoose from 'mongoose';
 import Rating from '../models/Rating.js';
+import Notification from '../models/Notification.js';
 
 /**
  * Get all tickets (with filtering options)
@@ -129,6 +130,9 @@ export const createTicket = async (req, res) => {
       assignedTo = req.body.assignedTo;
     }
 
+    // Set deadline to 2 days from now
+    const deadline = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+
     // Create ticket (unassigned by default)
     const ticket = await Ticket.create({
       subject,
@@ -138,11 +142,31 @@ export const createTicket = async (req, res) => {
       user: req.user.id,
       attachments: attachments || [],
       priority: ticketPriority,
-      assignedTo
+      assignedTo,
+      deadline
     });
 
     // Populate user info
     await ticket.populate('user', 'name email');
+
+    // Notify all admins of new ticket
+    const admins = await User.find({ role: 'admin' });
+    for (const admin of admins) {
+      await Notification.create({
+        user: admin._id,
+        message: `A new ticket "${ticket.subject}" has been created by ${ticket.user.name}.`,
+        type: 'ticket_created'
+      });
+    }
+    // Optionally, notify all agents as well (uncomment if needed)
+    // const agents = await User.find({ role: 'agent' });
+    // for (const agent of agents) {
+    //   await Notification.create({
+    //     user: agent._id,
+    //     message: `A new ticket "${ticket.subject}" has been created by ${ticket.user.name}.`,
+    //     type: 'ticket_created'
+    //   });
+    // }
 
     res.status(201).json({
       success: true,
@@ -189,7 +213,9 @@ export const getTicket = async (req, res) => {
     // If user is an agent, they can only access tickets assigned to them
     if (req.user.role === 'agent' && 
         ticket.assignedTo && 
-        ticket.assignedTo._id.toString() !== req.user.id) {
+        ticket.assignedTo._id.toString() !== req.user.id.toString()) {
+      console.log('Ticket assignedTo:', ticket.assignedTo?._id?.toString());
+      console.log('Current user id:', req.user.id.toString());
       return res.status(403).json({ error: 'Not authorized to access this ticket - it is assigned to another agent' });
     }
 
@@ -284,6 +310,28 @@ export const updateTicket = async (req, res) => {
           // Special log for resolution
           if (status === 'resolved') {
             console.log(`RESOLUTION: Ticket ${ticket._id} was marked as resolved by agent ${req.user.id} (${req.user.name || 'Unknown'})`);
+            // Notify customer of resolution
+            await Notification.create({
+              user: ticket.user,
+              message: `Your ticket "${ticket.subject}" has been marked as resolved by support.`,
+              type: 'ticket_resolved'
+            });
+          }
+          // Notify customer if closed
+          if (status === 'closed') {
+            await Notification.create({
+              user: ticket.user,
+              message: `Your ticket "${ticket.subject}" has been closed.`,
+              type: 'ticket_closed'
+            });
+          }
+          // Notify agent if customer reopens ticket
+          if (ticket.status === 'resolved' && status === 'waiting-for-agent' && ticket.assignedTo) {
+            await Notification.create({
+              user: ticket.assignedTo,
+              message: `Customer has reopened ticket "${ticket.subject}".`,
+              type: 'ticket_reopened'
+            });
           }
         }
         ticket.status = status;
@@ -311,6 +359,23 @@ export const updateTicket = async (req, res) => {
           // Self-assignment is allowed
           ticket.assignedTo = assignedTo;
           console.log(`Ticket ${ticket._id} self-assigned to agent ${req.user.id} (${req.user.name || 'Unknown'})`);
+
+          // Create notification for customer
+          await Notification.create({
+            user: ticket.user,
+            message: `Your ticket "${ticket.subject}" has been assigned to an agent and is now in progress.`,
+            type: 'ticket_assigned'
+          });
+
+          // Create notification for admin
+          const admin = await User.findOne({ role: 'admin' });
+          if (admin) {
+            await Notification.create({
+              user: admin._id,
+              message: `Ticket "${ticket.subject}" has been assigned to agent ${req.user.name}.`,
+              type: 'ticket_assigned'
+            });
+          }
         }
         // Only admins can reassign tickets to other agents
         else if (req.user.role === 'admin') {
@@ -331,6 +396,20 @@ export const updateTicket = async (req, res) => {
           
           ticket.assignedTo = assignedTo;
           console.log(`Ticket ${ticket._id} assigned to agent ${assignedTo} by admin ${req.user.id}`);
+
+          // Create notification for customer
+          await Notification.create({
+            user: ticket.user,
+            message: `Your ticket "${ticket.subject}" has been assigned to an agent and is now in progress.`,
+            type: 'ticket_assigned'
+          });
+
+          // Create notification for the assigned agent
+          await Notification.create({
+            user: assignedTo,
+            message: `You have been assigned ticket "${ticket.subject}".`,
+            type: 'ticket_assigned'
+          });
         }
       }
     }
@@ -421,6 +500,25 @@ export const addReply = async (req, res) => {
 
     // Populate user info in the reply
     await reply.populate('user', 'name email profileImage role');
+
+    // Notify the other party
+    if (req.user.role === 'customer') {
+      // Notify assigned agent (if any)
+      if (ticket.assignedTo) {
+        await Notification.create({
+          user: ticket.assignedTo,
+          message: `Customer replied to ticket "${ticket.subject}".`,
+          type: 'ticket_reply'
+        });
+      }
+    } else if (req.user.role === 'agent' || req.user.role === 'admin') {
+      // Notify customer
+      await Notification.create({
+        user: ticket.user,
+        message: `You have a new reply from support on ticket "${ticket.subject}".`,
+        type: 'ticket_reply'
+      });
+    }
 
     res.status(201).json({
       success: true,
@@ -728,6 +826,67 @@ export const removeTicketFromView = async (req, res) => {
     });
   } catch (error) {
     console.error('Remove ticket error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Add new function for manual escalation
+export const escalateTicket = async (req, res) => {
+  try {
+    const ticket = await Ticket.findById(req.params.id);
+    if (!ticket) {
+      return res.status(404).json({ error: 'Ticket not found' });
+    }
+
+    // Check if user has permission to escalate
+    if (req.user.role === 'customer' || 
+        (req.user.role === 'agent' && req.user.agentType === 'Junior')) {
+      
+      // Find a senior agent
+      const seniorAgent = await User.findOne({
+        role: 'agent',
+        agentType: 'Senior'
+      });
+
+      if (!seniorAgent) {
+        return res.status(400).json({ error: 'No senior agent available for escalation' });
+      }
+
+      // Update ticket
+      ticket.assignedTo = seniorAgent._id;
+      ticket.escalationLevel = 'senior';
+      ticket.escalationHistory.push({
+        escalatedAt: new Date(),
+        from: req.user.role === 'customer' ? 'customer' : 'junior',
+        to: 'senior',
+        reason: req.body.reason || 'Manual escalation requested'
+      });
+
+      // Create notifications
+      await Notification.create({
+        user: seniorAgent._id,
+        message: `Ticket #${ticket.ticketNumber} has been escalated to you by ${req.user.role === 'customer' ? 'customer' : 'junior agent'}.`,
+        type: 'ticket_escalated'
+      });
+
+      await Notification.create({
+        user: ticket.user,
+        message: `Your ticket #${ticket.ticketNumber} has been escalated to a senior agent.`,
+        type: 'ticket_escalated'
+      });
+
+      await ticket.save();
+
+      res.json({
+        success: true,
+        message: 'Ticket escalated successfully',
+        ticket
+      });
+    } else {
+      res.status(403).json({ error: 'You do not have permission to escalate this ticket' });
+    }
+  } catch (error) {
+    console.error('Escalate ticket error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 }; 

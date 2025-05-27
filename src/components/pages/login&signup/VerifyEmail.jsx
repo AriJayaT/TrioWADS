@@ -15,8 +15,12 @@ const VerifyEmail = () => {
       try {
         const response = await authService.verifyEmail(token);
         setStatus('success');
-        // Log the user in automatically
-        login(response.token, response.user);
+        // Log the user in automatically by updating auth context
+        if (response.success && response.user && response.token) {
+           // Use the login function from AuthContext to update state
+           login(response.user, response.token); // Pass the user object and token
+        }
+
         // Redirect after 3 seconds
         setTimeout(() => {
           navigate('/');

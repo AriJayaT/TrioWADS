@@ -44,11 +44,7 @@ apiClient.interceptors.response.use(
       // Clear token and user data
       localStorage.removeItem('authToken');
       localStorage.removeItem('user');
-      
-      // If we're not already on the login page, redirect there
-      if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/login';
-      }
+      localStorage.removeItem('userRole');
     }
     
     return Promise.reject(error);

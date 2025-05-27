@@ -1,16 +1,73 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { FaBell, FaHome, FaTicketAlt, FaUserCircle, FaSignOutAlt } from 'react-icons/fa';
 import { IoMdArrowDropdown, IoMdHelpCircle } from 'react-icons/io';
 import logo from '/src/assets/logo.jpg';
 import { useAuth } from '../../context/AuthContext';
+import { getNotifications, markNotificationAsRead } from '../../services/api/notificationService';
 
 const CustomerLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const path = location.pathname;
   const [profileMenu, setProfileMenu] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const notifRef = useRef(null);
+  const profileRef = useRef(null);
   const { user, logout } = useAuth();
+
+  // Notifications state (to be filled by API)
+  const [notifications, setNotifications] = useState([]);
+  const [loadingNotifs, setLoadingNotifs] = useState(true);
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  // Fetch notifications on mount
+  useEffect(() => {
+    const fetchNotifs = async () => {
+      try {
+        setLoadingNotifs(true);
+        const notifs = await getNotifications();
+        setNotifications(notifs);
+      } catch (err) {
+        setNotifications([]);
+      } finally {
+        setLoadingNotifs(false);
+      }
+    };
+    if (user && user.id) fetchNotifs();
+  }, [user]);
+
+  // Mark all as read when dropdown is opened
+  const handleNotifDropdown = async () => {
+    if (!notifOpen) {
+      const unread = notifications.filter(n => !n.read);
+      await Promise.all(unread.map(n => markNotificationAsRead(n._id)));
+      setNotifications(notifications.map(n => ({ ...n, read: true })));
+    }
+    setNotifOpen(!notifOpen);
+  };
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (notifRef.current && !notifRef.current.contains(event.target)) {
+        setNotifOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Close profile dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (profileRef.current && !profileRef.current.contains(event.target)) {
+        setProfileMenu(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Function to determine if a navigation item should be highlighted as active
   const isActive = (route) => {
@@ -22,7 +79,9 @@ const CustomerLayout = () => {
 
   const handleLogout = () => {
     logout();
-    navigate('/login');
+    setTimeout(() => {
+      navigate('/'); // Navigate to landing page
+    }, 50);
   };
 
   // Get user's initials for avatar display
@@ -34,7 +93,7 @@ const CustomerLayout = () => {
   return (
     <div className="min-h-screen bg-pink-50">
       {/* Header/Navbar */}
-      <header className="bg-white border-b border-gray-200 shadow-sm">
+      <header className="bg-white border-b border-gray-200 shadow-sm fixed top-0 left-0 w-full z-30">
         <div className="flex h-14 items-center px-4 justify-between">
           {/* Logo & Title */}
           <div className="flex items-center">
@@ -68,16 +127,44 @@ const CustomerLayout = () => {
 
           {/* Profile & Notifications */}
           <div className="flex items-center gap-4">
-            <div className="relative">
-              <FaBell className="text-gray-500" />
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-xs flex items-center justify-center">
-                2
-              </span>
+            {/* Notification Bell */}
+            <div className="relative" ref={notifRef}>
+              <button onClick={handleNotifDropdown} className="focus:outline-none cursor-pointer" style={{ cursor: 'pointer' }}>
+                <FaBell className="text-gray-500" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-xs flex items-center justify-center">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+              {/* Notification Dropdown */}
+              {notifOpen && (
+                <div className="absolute right-0 mt-2 w-80 bg-white rounded-md shadow-lg py-2 z-20 border border-gray-100">
+                  <div className="px-4 py-2 font-semibold text-gray-700 border-b">Notifications</div>
+                  {loadingNotifs ? (
+                    <div className="px-4 py-4 text-gray-500 text-sm">Loading...</div>
+                  ) : notifications.length === 0 ? (
+                    <div className="px-4 py-4 text-gray-500 text-sm">No notifications</div>
+                  ) : notifications.map((notif) => (
+                    <div
+                      key={notif._id}
+                      className={`block px-4 py-3 text-sm border-b last:border-b-0 hover:bg-pink-50 transition ${notif.read ? 'text-gray-500' : 'text-gray-800 font-medium'}`}
+                      onClick={() => setNotifOpen(false)}
+                    >
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs bg-pink-100 text-pink-600 rounded px-2 py-0.5 mr-2">{notif.type}</span>
+                        <span className="text-xs text-gray-400">{new Date(notif.timestamp).toLocaleString()}</span>
+                      </div>
+                      <div>{notif.message}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            <div className="relative">
-              <div 
+            <div className="relative" ref={profileRef}>
+              <div
                 className="flex items-center cursor-pointer"
-                onClick={() => setProfileMenu(!profileMenu)}
+                onClick={() => setProfileMenu((open) => !open)}
               >
                 <div className="w-8 h-8 rounded-full overflow-hidden bg-pink-100 flex items-center justify-center">
                   {user?.profileImage ? (
@@ -122,6 +209,8 @@ const CustomerLayout = () => {
       </header>
 
       <main className="p-4 md:p-6 max-w-7xl mx-auto">
+        {/* Add padding top to prevent content being hidden behind fixed navbar */}
+        <div style={{ height: '56px' }} />
         <Outlet />
       </main>
     </div>

@@ -10,7 +10,8 @@ import {
   submitRating,
   getAgentRatings,
   getTicketRating,
-  removeTicketFromView
+  removeTicketFromView,
+  escalateTicket
 } from '../controllers/ticketController.js';
 import { protect, authorize } from '../middleware/auth.js';
 
@@ -363,5 +364,34 @@ router.get('/:id/rating', protect, getTicketRating);
  *         description: Ticket not found
  */
 router.put('/:id/remove', protect, authorize('admin', 'agent'), removeTicketFromView);
+
+/**
+ * @swagger
+ * /api/tickets/{id}/escalate:
+ *   post:
+ *     summary: Escalate a ticket
+ *     tags: [Tickets]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Ticket ID
+ *     responses:
+ *       200:
+ *         description: Ticket escalated successfully
+ *       400:
+ *         description: Only open tickets can be escalated
+ *       401:
+ *         description: Not authorized
+ *       403:
+ *         description: Not authorized to escalate this ticket
+ *       404:
+ *         description: Ticket not found
+ */
+router.post('/:id/escalate', protect, escalateTicket);
 
 export default router; 

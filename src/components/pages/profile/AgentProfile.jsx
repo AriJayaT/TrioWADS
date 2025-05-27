@@ -1,10 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { FaUser, FaEnvelope, FaPhone, FaLock, FaSave, FaSpinner, FaIdBadge, FaStar } from 'react-icons/fa';
+import React, { useState, useEffect, useRef } from 'react';
+import { FaUser, FaEnvelope, FaPhone, FaLock, FaSave, FaSpinner, FaIdBadge, FaStar, FaTimes, FaUserShield, FaTachometerAlt, FaSignOutAlt } from 'react-icons/fa';
 import { useAuth } from '../../../context/AuthContext';
 import { getUserProfile, updateUserProfile, changePassword } from '../../../services/userService';
+import { Link, useNavigate } from 'react-router-dom';
+import NotificationBell from '../../common/NotificationBell';
+import logo from '/src/assets/logo.jpg';
+import AgentNavbar from '../../common/AgentNavbar';
 
 const AgentProfile = () => {
-  const { user, updateUserData } = useAuth();
+  const { user, updateUserData, logout } = useAuth();
   const [profileData, setProfileData] = useState({
     name: user?.name || '',
     email: user?.email || '',
@@ -22,6 +26,10 @@ const AgentProfile = () => {
   const [activeTab, setActiveTab] = useState('profile');
   const [message, setMessage] = useState({ type: '', text: '' });
   const [passwordMessage, setPasswordMessage] = useState({ type: '', text: '' });
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const navigate = useNavigate();
+  const [profileMenu, setProfileMenu] = useState(false);
+  const profileRef = useRef(null);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -134,268 +142,234 @@ const AgentProfile = () => {
     }
   };
 
+  const handleLogout = () => {
+    logout();
+    setTimeout(() => {
+      navigate('/');
+    }, 50);
+  };
+
+  const getUserInitials = () => {
+    if (!user || !user.name) return '?';
+    return user.name.split(' ').map(name => name[0]).join('').toUpperCase();
+  };
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (profileRef.current && !profileRef.current.contains(event.target)) {
+        setProfileMenu(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
-      <div className="bg-white shadow rounded-lg overflow-hidden">
-        {/* Profile header */}
-        <div className="bg-pink-600 text-white px-6 py-4 flex justify-between items-center">
-          <h1 className="text-xl font-bold">Agent Profile</h1>
-          <div className="flex items-center text-white text-sm">
-            <FaStar className="text-yellow-300 mr-1" />
-            <span>Support Agent</span>
+    <>
+      <AgentNavbar activeItem="Profile" />
+      <div className="min-h-screen bg-pink-50">
+        <div className="max-w-4xl mx-auto px-4 py-8">
+          <div className="flex items-center justify-between mb-6">
+            <h1 className="text-2xl font-bold">Agent Profile</h1>
+            <div className="px-4 py-1 bg-blue-100 text-blue-600 rounded-full text-sm font-medium">
+              <FaUserShield className="inline mr-1" /> Agent
+            </div>
           </div>
-        </div>
-        
-        {/* Tabs */}
-        <div className="bg-white border-b">
-          <nav className="flex">
-            <button
-              onClick={() => setActiveTab('profile')}
-              className={`px-6 py-3 ${
-                activeTab === 'profile' 
-                  ? 'border-b-2 border-pink-500 text-pink-500'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Profile
-            </button>
-            <button
-              onClick={() => setActiveTab('security')}
-              className={`px-6 py-3 ${
-                activeTab === 'security' 
-                  ? 'border-b-2 border-pink-500 text-pink-500'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Security
-            </button>
-          </nav>
-        </div>
-        
-        {/* Content */}
-        <div className="p-6">
           {loading ? (
-            <div className="flex justify-center items-center py-12">
+            <div className="flex justify-center items-center h-64">
               <FaSpinner className="animate-spin text-pink-500 text-2xl" />
             </div>
           ) : (
             <>
-              {activeTab === 'profile' && (
-                <div>
-                  {message.text && (
-                    <div className={`mb-6 p-3 rounded ${
-                      message.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                    }`}>
-                      {message.text}
-                    </div>
-                  )}
-                  
-                  <form onSubmit={handleProfileSubmit}>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Full Name
-                        </label>
-                        <div className="relative">
-                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <FaUser className="text-gray-400" />
-                          </div>
-                          <input
-                            type="text"
-                            name="name"
-                            value={profileData.name}
-                            onChange={handleInputChange}
-                            className="pl-10 block w-full rounded-md border border-gray-300 shadow-sm py-2 px-3 focus:outline-none focus:ring-pink-500 focus:border-pink-500"
-                            required
-                          />
-                        </div>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Email Address
-                        </label>
-                        <div className="relative">
-                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <FaEnvelope className="text-gray-400" />
-                          </div>
-                          <input
-                            type="email"
-                            name="email"
-                            value={profileData.email}
-                            onChange={handleInputChange}
-                            className="pl-10 block w-full rounded-md border border-gray-300 shadow-sm py-2 px-3 focus:outline-none focus:ring-pink-500 focus:border-pink-500"
-                            required
-                          />
-                        </div>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Phone Number
-                        </label>
-                        <div className="relative">
-                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <FaPhone className="text-gray-400" />
-                          </div>
-                          <input
-                            type="tel"
-                            name="phone"
-                            value={profileData.phone}
-                            onChange={handleInputChange}
-                            className="pl-10 block w-full rounded-md border border-gray-300 shadow-sm py-2 px-3 focus:outline-none focus:ring-pink-500 focus:border-pink-500"
-                          />
-                        </div>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Agent Category
-                        </label>
-                        <div className="relative">
-                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <FaIdBadge className="text-gray-400" />
-                          </div>
-                          <select
-                            name="category"
-                            value={profileData.category}
-                            className="pl-10 block w-full rounded-md border border-gray-300 shadow-sm py-2 px-3 bg-gray-100 text-gray-700 focus:outline-none"
-                            disabled
-                          >
-                            <option value="Junior">Junior Agent</option>
-                            <option value="Senior">Senior Agent</option>
-                          </select>
-                          <p className="mt-1 text-xs text-gray-500">
-                            Only administrators can change your agent category
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <button
-                        type="submit"
-                        disabled={updating}
-                        className="inline-flex justify-center items-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-pink-600 hover:bg-pink-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-pink-500"
-                      >
-                        {updating ? (
-                          <>
-                            <FaSpinner className="animate-spin mr-2" />
-                            Saving...
-                          </>
-                        ) : (
-                          <>
-                            <FaSave className="mr-2" />
-                            Save Changes
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </form>
+              {/* Tabs */}
+              <div className="bg-white shadow rounded-lg mb-6">
+                <div className="flex border-b">
+                  <button
+                    className={`px-6 py-3 font-medium text-sm ${
+                      activeTab === 'profile'
+                        ? 'text-pink-500 border-b-2 border-pink-500'
+                        : 'text-gray-600 hover:text-gray-800'
+                    }`}
+                    onClick={() => setActiveTab('profile')}
+                  >
+                    Profile Information
+                  </button>
+                  <button
+                    className={`px-6 py-3 font-medium text-sm ${
+                      activeTab === 'security'
+                        ? 'text-pink-500 border-b-2 border-pink-500'
+                        : 'text-gray-600 hover:text-gray-800'
+                    }`}
+                    onClick={() => setActiveTab('security')}
+                  >
+                    Security
+                  </button>
+                  <div className="ml-auto flex items-center">
+                    <Link to="/agent" className="text-pink-500 hover:text-pink-700 text-sm font-medium px-6 py-3">
+                      Back to Dashboard
+                    </Link>
+                  </div>
                 </div>
-              )}
-              
-              {activeTab === 'security' && (
-                <div>
-                  {passwordMessage.text && (
-                    <div className={`mb-6 p-3 rounded ${
-                      passwordMessage.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                    }`}>
-                      {passwordMessage.text}
-                    </div>
-                  )}
-                  
-                  <form onSubmit={handlePasswordSubmit} className="max-w-md">
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Current Password
-                        </label>
-                        <div className="relative">
-                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <FaLock className="text-gray-400" />
-                          </div>
-                          <input
-                            type="password"
-                            name="currentPassword"
-                            value={passwordData.currentPassword}
-                            onChange={handlePasswordChange}
-                            className="pl-10 block w-full rounded-md border border-gray-300 shadow-sm py-2 px-3 focus:outline-none focus:ring-pink-500 focus:border-pink-500"
-                            required
-                          />
+                <div className="p-6">
+                  {activeTab === 'profile' && (
+                    <div>
+                      <h2 className="text-lg font-medium mb-4">Profile Information</h2>
+                      {message.text && (
+                        <div className={`mb-4 p-3 rounded ${
+                          message.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                        }`}>
+                          {message.text}
                         </div>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          New Password
-                        </label>
-                        <div className="relative">
-                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <FaLock className="text-gray-400" />
+                      )}
+                      <form onSubmit={handleProfileSubmit}>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Full Name
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="text"
+                                name="name"
+                                value={profileData.name}
+                                onChange={handleInputChange}
+                                className="block w-full rounded-md border border-gray-300 shadow-sm py-3 px-4 focus:outline-none focus:ring-pink-500 focus:border-pink-500"
+                                required
+                              />
+                            </div>
                           </div>
-                          <input
-                            type="password"
-                            name="newPassword"
-                            value={passwordData.newPassword}
-                            onChange={handlePasswordChange}
-                            className="pl-10 block w-full rounded-md border border-gray-300 shadow-sm py-2 px-3 focus:outline-none focus:ring-pink-500 focus:border-pink-500"
-                            required
-                            minLength={8}
-                          />
-                        </div>
-                        <p className="mt-1 text-xs text-gray-500">
-                          Password must be at least 8 characters
-                        </p>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Confirm New Password
-                        </label>
-                        <div className="relative">
-                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <FaLock className="text-gray-400" />
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Email
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="email"
+                                name="email"
+                                value={profileData.email}
+                                onChange={handleInputChange}
+                                className="block w-full rounded-md border border-gray-300 shadow-sm py-3 px-4 focus:outline-none focus:ring-pink-500 focus:border-pink-500"
+                                required
+                              />
+                            </div>
                           </div>
-                          <input
-                            type="password"
-                            name="confirmPassword"
-                            value={passwordData.confirmPassword}
-                            onChange={handlePasswordChange}
-                            className="pl-10 block w-full rounded-md border border-gray-300 shadow-sm py-2 px-3 focus:outline-none focus:ring-pink-500 focus:border-pink-500"
-                            required
-                          />
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Phone Number
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="text"
+                                name="phone"
+                                value={profileData.phone}
+                                onChange={handleInputChange}
+                                className="block w-full rounded-md border border-gray-300 shadow-sm py-3 px-4 focus:outline-none focus:ring-pink-500 focus:border-pink-500"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Agent Category
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="text"
+                                name="category"
+                                value={profileData.category}
+                                disabled
+                                className="block w-full rounded-md border border-gray-300 shadow-sm py-3 px-4 bg-gray-100 text-gray-500 cursor-not-allowed"
+                              />
+                              <span className="text-xs text-gray-400 absolute right-2 top-1/2 transform -translate-y-1/2">(Only admin can change)</span>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                      
-                      <div className="pt-2">
                         <button
                           type="submit"
-                          disabled={changingPassword}
-                          className="inline-flex justify-center items-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-pink-600 hover:bg-pink-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-pink-500"
+                          className="mt-6 bg-pink-500 hover:bg-pink-600 text-white font-semibold py-2 px-6 rounded shadow"
+                          disabled={updating}
                         >
-                          {changingPassword ? (
-                            <>
-                              <FaSpinner className="animate-spin mr-2" />
-                              Updating...
-                            </>
-                          ) : (
-                            <>
-                              <FaLock className="mr-2" />
-                              Change Password
-                            </>
-                          )}
+                          {updating ? <FaSpinner className="animate-spin inline mr-2" /> : <FaSave className="inline mr-2" />}
+                          Save Changes
                         </button>
-                      </div>
+                      </form>
                     </div>
-                  </form>
+                  )}
+                  {activeTab === 'security' && (
+                    <div>
+                      <h2 className="text-lg font-medium mb-4">Change Password</h2>
+                      {passwordMessage.text && (
+                        <div className={`mb-4 p-3 rounded ${
+                          passwordMessage.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                        }`}>
+                          {passwordMessage.text}
+                        </div>
+                      )}
+                      <form onSubmit={handlePasswordSubmit}>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Current Password
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="password"
+                                name="currentPassword"
+                                value={passwordData.currentPassword}
+                                onChange={handlePasswordChange}
+                                className="block w-full rounded-md border border-gray-300 shadow-sm py-3 px-4 focus:outline-none focus:ring-pink-500 focus:border-pink-500"
+                                required
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              New Password
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="password"
+                                name="newPassword"
+                                value={passwordData.newPassword}
+                                onChange={handlePasswordChange}
+                                className="block w-full rounded-md border border-gray-300 shadow-sm py-3 px-4 focus:outline-none focus:ring-pink-500 focus:border-pink-500"
+                                required
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Confirm New Password
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="password"
+                                name="confirmPassword"
+                                value={passwordData.confirmPassword}
+                                onChange={handlePasswordChange}
+                                className="block w-full rounded-md border border-gray-300 shadow-sm py-3 px-4 focus:outline-none focus:ring-pink-500 focus:border-pink-500"
+                                required
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          type="submit"
+                          className="mt-6 bg-pink-500 hover:bg-pink-600 text-white font-semibold py-2 px-6 rounded shadow"
+                          disabled={changingPassword}
+                        >
+                          {changingPassword ? <FaSpinner className="animate-spin inline mr-2" /> : <FaLock className="inline mr-2" />}
+                          Change Password
+                        </button>
+                      </form>
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
             </>
           )}
         </div>
       </div>
-    </div>
+    </>
   );
 };
 

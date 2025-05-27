@@ -5,6 +5,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import logo from '/src/assets/logo.jpg';
 import ticketService from '../../../services/api/ticketService';
 import apiClient from '../../../services/api/apiClient';
+import NotificationBell from '../../common/NotificationBell';
 
 const TicketList = () => {
   const navigate = useNavigate();
@@ -418,7 +419,9 @@ const TicketList = () => {
 
   const handleLogout = () => {
     logout();
-    navigate('/');
+    setTimeout(() => {
+      navigate('/');
+    }, 50);
   };
 
   const getUserInitials = () => {
@@ -539,6 +542,27 @@ const TicketList = () => {
     }
   };
 
+  // Utility function to format remaining time until deadline
+  const formatRemainingTime = (deadline) => {
+    if (!deadline) return 'N/A';
+    const now = new Date();
+    const end = new Date(deadline);
+    let diff = end - now;
+    if (diff <= 0) return 'Expired';
+
+    const days = Math.floor(diff / (24 * 60 * 60 * 1000));
+    diff -= days * 24 * 60 * 60 * 1000;
+    const hours = Math.floor(diff / (60 * 60 * 1000));
+    diff -= hours * 60 * 60 * 1000;
+    const minutes = Math.floor(diff / (60 * 1000));
+
+    let result = '';
+    if (days > 0) result += `${days}d `;
+    if (hours > 0 || days > 0) result += `${hours}h `;
+    result += `${minutes}m`;
+    return result.trim();
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col justify-center items-center h-screen">
@@ -594,12 +618,7 @@ const TicketList = () => {
 
           {/* Profile & Notifications */}
           <div className="flex items-center gap-4">
-            <div className="relative">
-              <FaBell className="text-gray-500" />
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-xs flex items-center justify-center">
-                {unassignedTickets.length}
-              </span>
-            </div>
+            <NotificationBell />
             <div className="relative">
               <div 
                 className="flex items-center cursor-pointer"
@@ -837,6 +856,9 @@ const TicketList = () => {
                       Wait Time
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Remaining Time
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
@@ -877,6 +899,9 @@ const TicketList = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {formatWaitTime(ticket.updatedAt || ticket.createdAt)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {formatRemainingTime(ticket.deadline)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex space-x-2 justify-end">

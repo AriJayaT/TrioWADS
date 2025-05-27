@@ -77,7 +77,27 @@ const ticketSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
-  }
+  },
+  deadline: {
+    type: Date,
+    required: true
+  },
+  escalationLevel: {
+    type: String,
+    enum: ['junior', 'senior'],
+    default: 'junior'
+  },
+  escalationHistory: [{
+    escalatedAt: Date,
+    from: String,
+    to: String,
+    reason: String
+  }],
+  reminderSent: {
+    type: Map,
+    of: Boolean,
+    default: new Map()
+  },
 }, {
   timestamps: true,
   toJSON: { 
@@ -124,6 +144,9 @@ ticketSchema.pre('save', async function(next) {
   if (this.isNew) {
     const count = await mongoose.model('Ticket').countDocuments();
     this.ticketNumber = `JC-${Date.now().toString().slice(-6)}${(count + 1).toString().padStart(4, '0')}`;
+    
+    // Set deadline to 2 days from now for new tickets
+    this.deadline = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
   }
   
   // Update the lastUpdated timestamp

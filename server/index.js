@@ -1,7 +1,17 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
+// Test environment variables
+console.log('Testing environment variables:', {
+  NODE_ENV: process.env.NODE_ENV,
+  EMAIL_USER: process.env.EMAIL_USER,
+  EMAIL_PASSWORD: process.env.EMAIL_PASSWORD ? 'Set' : 'Not Set',
+  EMAIL_PASSWORD_LENGTH: process.env.EMAIL_PASSWORD ? process.env.EMAIL_PASSWORD.length : 0
+});
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import dotenv from 'dotenv';
 import { rateLimit } from 'express-rate-limit';
 import swaggerUi from 'swagger-ui-express';
 import swaggerJsdoc from 'swagger-jsdoc';
@@ -12,9 +22,7 @@ import authRoutes from './routes/authRoutes.js';
 import ticketRoutes from './routes/ticketRoutes.js';
 import articleRoutes from './routes/articleRoutes.js';
 import userRoutes from './routes/userRoutes.js';
-
-// Load environment variables
-dotenv.config();
+import notificationRoutes from './routes/notificationRoutes.js';
 
 // Initialize express app
 const app = express();
@@ -98,6 +106,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/articles', articleRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // 404 handler
 app.use((req, res) => {

@@ -1,11 +1,13 @@
 import React, { useState } from "react";
-import { FaEnvelope, FaKey } from "react-icons/fa";
+import { FaEnvelope, FaKey, FaHome } from "react-icons/fa";
 import { FcGoogle } from "react-icons/fc";
 import logo from "/src/assets/logo.jpg";
 import InputField from "./InputField";
 import Button from "./Button";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { authService } from "/src/services/api";
+import { useAuth } from "../../context/AuthContext";
+import { GoogleLogin } from '@react-oauth/google';
 
 const LoginForm = ({ userType = "customer" }) => {
   const [email, setEmail] = useState("");
@@ -13,6 +15,7 @@ const LoginForm = ({ userType = "customer" }) => {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const { login, user: authUser } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -20,16 +23,27 @@ const LoginForm = ({ userType = "customer" }) => {
     setError("");
     
     try {
+      // Clear any existing auth data before login (handled by authService.login now)
+      // authService.logout(); 
+      
       // Call the login API using our authService
       const result = await authService.login({ email, password });
       
-      // Check user role if needed
+      // Get the user from the response
       const user = result.user;
       
-      // Validate user role matches the selected login type
+      // Validate user role matches the selected login type BEFORE navigating
       if (user.role !== userType) {
+        // Clear any stored data since role doesn't match (handled by authService.login error)
+        // authService.logout(); 
         throw new Error(`Please use the ${user.role} login page instead`);
       }
+      
+      // If role matches, update AuthContext state with the user data
+      login(email, password); // Call the login function from AuthContext
+
+      // Only store the role if it matches (handled by authService.login now)
+      // localStorage.setItem('userRole', user.role);
       
       // Redirect based on user type
       if (user.role === "admin") {
@@ -48,19 +62,24 @@ const LoginForm = ({ userType = "customer" }) => {
     }
   };
 
-  const handleGoogleLogin = async () => {
+  const handleGoogleAuthSuccess = async (credentialResponse) => {
     setIsLoading(true);
     setError("");
-    
+
     try {
-      const result = await authService.loginWithGoogle();
+      const result = await authService.loginWithGoogle(credentialResponse, userType);
       const user = result.user;
-      
+
       // Validate user role matches the selected login type
       if (user.role !== userType) {
+        // Log out the user if role doesn't match
+        authService.logout();
         throw new Error(`Please use the ${user.role} login page instead`);
       }
-      
+
+      // Log the user in via AuthContext
+      login(user, result.token);
+
       // Redirect based on user type
       if (user.role === "admin") {
         navigate("/admin");
@@ -70,8 +89,8 @@ const LoginForm = ({ userType = "customer" }) => {
         navigate("/customer");
       }
     } catch (error) {
-      console.error("Google login error:", error);
-      setError(typeof error === 'string' ? error : "Failed to login with Google");
+      console.error("Google authentication failed:", error);
+      setError(typeof error === 'string' ? error : "Google authentication failed");
     } finally {
       setIsLoading(false);
     }
@@ -101,6 +120,16 @@ const LoginForm = ({ userType = "customer" }) => {
 
   const getRoleChangeLink = () => {
     return "/select-version";
+  };
+
+  // Helper function to get the correct article "a" or "an"
+  const getArticle = (role) => {
+    const lowerRole = role.toLowerCase();
+    if (lowerRole === 'admin' || lowerRole === 'agent') {
+      return 'an';
+    } else {
+      return 'a';
+    }
   };
 
   return (
@@ -139,6 +168,13 @@ const LoginForm = ({ userType = "customer" }) => {
           disabled={isLoading}
         />
 
+        {/* Forgot password link */}
+        <div className="text-sm text-right mb-4">
+          <Link to="/forgot-password" className="font-medium text-indigo-600 hover:text-indigo-500">
+            Forgot your password?
+          </Link>
+        </div>
+
         {error && <p className="text-red-500 mt-[-1px] text-sm">{error}</p>}
 
         <Button variant="bigSubmit" disabled={isLoading}>
@@ -156,14 +192,33 @@ const LoginForm = ({ userType = "customer" }) => {
           </div>
         </div>
 
-        <button
-          onClick={handleGoogleLogin}
-          disabled={isLoading}
-          className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-pink-500"
-        >
-          <FcGoogle className="w-5 h-5" />
-          Sign in with Google
-        </button>
+        {/* Google Sign-In Button */}
+        <div className="mt-4">
+          <GoogleLogin
+            onSuccess={credentialResponse => {
+              console.log(credentialResponse);
+              // Handle successful Google login response here
+              // You'll need to send credentialResponse.credential (the ID token) to your backend
+              handleGoogleAuthSuccess(credentialResponse);
+            }}
+            onError={() => {
+              console.log('Login Failed');
+              // Handle Google login error here
+            }}
+          />
+        </div>
+
+        {/* New or separator */}
+        <div className="mt-4">
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-300"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-white text-gray-500">or</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <p className="mt-5 text-sm">New to Jellycats?</p>
@@ -173,8 +228,11 @@ const LoginForm = ({ userType = "customer" }) => {
 
       <div className="mt-4 pt-4 border-t border-gray-100">
         <a href={getRoleChangeLink()} className="text-gray-500 text-sm">
-          Not a {getUserTypeTitle().toLowerCase()}? Change role
+          Not {getArticle(getUserTypeTitle())} {getUserTypeTitle().toLowerCase()}? Change role
         </a>
+        <Link to="/" className="text-gray-500 text-sm mt-2 flex items-center justify-center">
+          <FaHome className="mr-1" /> Home
+        </Link>
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import express from 'express';
-import { register, login, getCurrentUser, updateProfile, changePassword, sendVerificationCode, googleLogin } from '../controllers/authController.js';
+import { register, login, getCurrentUser, updateProfile, changePassword, sendVerificationCode, googleLogin, verifyEmail, forgotPassword, resetPassword } from '../controllers/authController.js';
 import { protect } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -194,5 +194,77 @@ router.put('/password', protect, changePassword);
  *         description: Invalid email
  */
 router.post('/send-verification', sendVerificationCode);
+
+/**
+ * @swagger
+ * /api/auth/verify-email/{token}:
+ *   get:
+ *     summary: Verify user email with token
+ *     tags: [Auth]
+ *     parameters:
+ *       - in: path
+ *         name: token
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Email verification token
+ *     responses:
+ *       200:
+ *         description: Email verified successfully
+ *       400:
+ *         description: Invalid or expired token
+ *       500:
+ *         description: Server error
+ */
+router.get('/verify-email/:token', verifyEmail);
+
+/**
+ * @swagger
+ * /api/auth/forgot-password:
+ *   post:
+ *     summary: Request password reset email
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Password reset email sent successfully
+ *       404:
+ *         description: User not found with that email
+ *       500:
+ *         description: Server error
+ */
+router.post('/forgot-password', forgotPassword);
+
+/**
+ * @swagger
+ * /api/auth/reset-password/{resettoken}:
+ *   put:
+ *     summary: Reset user password
+ *     tags: [Auth]
+ *     parameters:
+ *       - in: path
+ *         name: resettoken
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Password reset successfully
+ *       400:
+ *         description: Invalid or expired reset token
+ *       500:
+ *         description: Server error
+ */
+router.put('/reset-password/:resettoken', resetPassword);
 
 export default router; 

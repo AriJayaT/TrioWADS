@@ -14,7 +14,9 @@ const CustomerHeader = () => {
   
   const handleLogout = () => {
     logout();
-    navigate('/');
+    setTimeout(() => {
+      navigate('/');
+    }, 50);
     setProfileMenu(false);
   };
   
@@ -32,7 +34,7 @@ const CustomerHeader = () => {
   };
   
   return (
-    <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
+    <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
       <div className="flex h-14 items-center px-4 justify-between">
         {/* Logo & Title */}
         <div className="flex items-center">

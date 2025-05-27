@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import validator from 'validator';
+import crypto from 'crypto';
 
 const userSchema = new mongoose.Schema({
   name: {
@@ -19,12 +20,12 @@ const userSchema = new mongoose.Schema({
   },
   phone: {
     type: String,
-    required: [true, 'Please provide a phone number'],
+    required: [function() { return this.authMethod === 'local'; }, 'Please provide a phone number'],
     trim: true
   },
   password: {
     type: String,
-    required: [true, 'Please provide a password'],
+    required: [function() { return this.authMethod === 'local'; }, 'Please provide a password'],
     minlength: [6, 'Password must be at least 6 characters'],
     select: false
   },
@@ -43,11 +44,22 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: 'default-profile.jpg'
   },
+  isVerified: {
+    type: Boolean,
+    default: false
+  },
+  emailVerificationToken: String,
+  emailVerificationExpire: Date,
   resetPasswordToken: String,
   resetPasswordExpire: Date,
   createdAt: {
     type: Date,
     default: Date.now
+  },
+  authMethod: {
+    type: String,
+    enum: ['local', 'google'],
+    default: 'local'
   }
 }, {
   timestamps: true,
@@ -70,14 +82,12 @@ userSchema.virtual('tickets', {
  * Encrypt password using bcrypt before saving
  */
 userSchema.pre('save', async function(next) {
-  // Only hash the password if it's modified or new
-  if (!this.isModified('password')) {
-    return next();
+  // Only hash the password if it's a local auth method and the password is modified or new
+  if (this.authMethod === 'local' && this.isModified('password')) {
+    // Hash password with strength of 12
+    const salt = await bcrypt.genSalt(12);
+    this.password = await bcrypt.hash(this.password, salt);
   }
-  
-  // Hash password with strength of 12
-  const salt = await bcrypt.genSalt(12);
-  this.password = await bcrypt.hash(this.password, salt);
   next();
 });
 
@@ -96,10 +106,55 @@ userSchema.methods.matchPassword = async function(enteredPassword) {
  */
 userSchema.methods.getSignedJwtToken = function() {
   return jwt.sign(
-    { id: this._id, role: this.role },
+    { 
+      id: this._id, 
+      role: this.role,
+      email: this.email,
+      name: this.name
+    },
     process.env.JWT_SECRET || 'jellycatsecret',
     { expiresIn: process.env.JWT_EXPIRATION || '7d' }
   );
+};
+
+/**
+ * Generate email verification token
+ * @returns {string} - Raw token
+ */
+userSchema.methods.generateEmailVerificationToken = function() {
+  // Generate a raw token
+  const verificationToken = crypto.randomBytes(20).toString('hex');
+
+  // Hash the token and set to emailVerificationToken field
+  this.emailVerificationToken = crypto
+    .createHash('sha256')
+    .update(verificationToken)
+    .digest('hex');
+
+  // Set expire (e.g., 15 minutes)
+  this.emailVerificationExpire = Date.now() + 15 * 60 * 1000; 
+
+  return verificationToken; // Return the raw token to be sent in email
+};
+
+/**
+ * Generate password reset token
+ * @returns {string} - Raw token
+ */
+userSchema.methods.getResetPasswordToken = function() {
+  // Generate token
+  const resetToken = crypto.randomBytes(20).toString('hex');
+
+  // Hash token and set to resetPasswordToken field
+  this.resetPasswordToken = crypto
+    .createHash('sha256')
+    .update(resetToken)
+    .digest('hex');
+
+  // Set expire (e.g., 1 hour)
+  this.resetPasswordExpire = Date.now() + 60 * 60 * 1000;
+
+  return resetToken;
 };
 
 /**
