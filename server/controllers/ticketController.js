@@ -168,6 +168,12 @@ export const createTicket = async (req, res) => {
     //   });
     // }
 
+    // --- SOCKET.IO: Emit new_ticket event ---
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('new_ticket', ticket); // You can filter/room this as needed
+    }
+
     res.status(201).json({
       success: true,
       ticket
@@ -418,6 +424,12 @@ export const updateTicket = async (req, res) => {
     ticket.lastUpdated = Date.now();
     
     await ticket.save();
+
+    // --- SOCKET.IO: Emit ticket_updated event ---
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('ticket_updated', ticket); // You can filter/room this as needed
+    }
 
     // Re-fetch with populated fields
     ticket = await Ticket.findById(req.params.id)

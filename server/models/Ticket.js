@@ -96,7 +96,7 @@ const ticketSchema = new mongoose.Schema({
   reminderSent: {
     type: Map,
     of: Boolean,
-    default: new Map()
+    default: () => new Map()
   },
 }, {
   timestamps: true,

@@ -23,6 +23,7 @@ import ticketRoutes from './routes/ticketRoutes.js';
 import articleRoutes from './routes/articleRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
+import './scheduler/escalationJob.js'; // Import the escalation job
 
 // Initialize express app
 const app = express();
@@ -121,9 +122,33 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start the server
+// Start the server (create http server for socket.io)
+import http from 'http';
+const server = http.createServer(app);
+
+// --- SOCKET.IO SETUP ---
+import { Server as SocketIOServer } from 'socket.io';
+const io = new SocketIOServer(server, {
+  cors: {
+    origin: '*', // Adjust as needed for production
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    credentials: true
+  }
+});
+
+// Attach io to app for access in controllers
+app.set('io', io);
+
+io.on('connection', (socket) => {
+  console.log('Socket connected:', socket.id);
+  // You can add authentication and room logic here if needed
+  socket.on('disconnect', () => {
+    console.log('Socket disconnected:', socket.id);
+  });
+});
+
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
   console.log(`API Documentation available at http://localhost:${PORT}/api-docs`);
 }); 

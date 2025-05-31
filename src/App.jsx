@@ -20,6 +20,7 @@ import CustomerProfile from "./components/pages/profile/CustomerProfile";
 import AdminProfile from "./components/pages/profile/AdminProfile";
 import AgentProfile from "./components/pages/profile/AgentProfile";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { SocketProvider } from "./context/SocketContext";
 import VerifyEmail from './components/pages/login&signup/VerifyEmail';
 import ForgotPassword from './components/pages/login&signup/ForgotPassword';
 import ResetPassword from './components/pages/login&signup/ResetPassword';
@@ -130,105 +131,107 @@ function App() {
   return (
     <ErrorBoundary>
       <AuthProvider>
-        <BrowserRouter>
-          <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
-            <Routes>
-              <Route path="/" element={<LandingPage />} />
-              <Route path="/select-version" element={<VersionSelectPage />} />
-              
-              {/* Login routes for different roles */}
-              <Route path="/login" element={<LoginPage userType="customer" />} />
-              <Route path="/admin/login" element={<LoginPage userType="admin" />} />
-              <Route path="/agent/login" element={<LoginPage userType="agent" />} />
-              
-              {/* Signup routes for different roles */}
-              <Route path="/signup" element={<Signup userType="customer" />} />
-              <Route path="/admin/signup" element={<Signup userType="admin" />} />
-              <Route path="/agent/signup" element={<Signup userType="agent" />} />
-              
-              {/* Forgot Password Route */}
-              <Route path="/forgot-password" element={<ForgotPassword />} />
-              
-              {/* Customer ticket creation - protected route */}
-              <Route path="/customer/create-ticket" element={
-                <PrivateRoute requiredRole="customer">
-                  <CreateTicket />
-                </PrivateRoute>
-              } />
-              <Route path="/create-ticket" element={<Navigate to="/customer/create-ticket" replace />} />
-              
-              {/* Dashboard routes - protected routes */}
-              <Route path="/admin" element={
-                <PrivateRoute requiredRole="admin">
-                  <AdminDashboard />
-                </PrivateRoute>
-              } />
-              <Route path="/admin/agents" element={
-                <PrivateRoute requiredRole="admin">
-                  <AgentManagement />
-                </PrivateRoute>
-              } />
-              <Route path="/admin/analytics" element={
-                <PrivateRoute requiredRole="admin">
-                  <AdminAnalytic />
-                </PrivateRoute>
-              } />
-              <Route path="/admin/profile" element={
-                <PrivateRoute requiredRole="admin">
-                  <AdminProfile />
-                </PrivateRoute>
-              } />
-              <Route path="/agent" element={
-                <PrivateRoute requiredRole="agent">
-                  <AgentDashboard />
-                </PrivateRoute>
-              } />
-              <Route path="/agent/tickets" element={
-                <PrivateRoute requiredRole="agent">
-                  <TicketList />
-                </PrivateRoute>
-              } />
-              <Route path="/agent/profile" element={
-                <PrivateRoute requiredRole="agent">
-                  <AgentProfile />
-                </PrivateRoute>
-              } />
-              
-              {/* Customer Dashboard Routes - protected routes */}
-              <Route path="/customer" element={
-                <PrivateRoute requiredRole="customer">
-                  <CustomerLayout />
-                </PrivateRoute>
-              }>
-                <Route index element={<CustomerHome />} />
-                <Route path="dashboard" element={<Navigate to="/customer" replace />} />
-                <Route path="tickets" element={<CustomerDashboard />} />
-                <Route path="ticket/:ticketId" element={<TicketDetails />} />
-                <Route path="help-center" element={<HelpCenter />} />
-                <Route path="profile" element={<CustomerProfile />} />
-              </Route>
-              
-              {/* Public Help Center Route */}
-              <Route path="/help-center" element={<StandaloneHelpCenter />} />
-              
-              {/* Email Verification Pending Page */}
-              <Route path="/verification-pending" element={<VerificationPendingPage />} />
-              
-              {/* Route for handling email verification link */}
-              <Route path="/api/auth/verify-email/:token" element={<VerifyEmail />} />
+        <SocketProvider>
+          <BrowserRouter>
+            <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
+              <Routes>
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/select-version" element={<VersionSelectPage />} />
+                
+                {/* Login routes for different roles */}
+                <Route path="/login" element={<LoginPage userType="customer" />} />
+                <Route path="/admin/login" element={<LoginPage userType="admin" />} />
+                <Route path="/agent/login" element={<LoginPage userType="agent" />} />
+                
+                {/* Signup routes for different roles */}
+                <Route path="/signup" element={<Signup userType="customer" />} />
+                <Route path="/admin/signup" element={<Signup userType="admin" />} />
+                <Route path="/agent/signup" element={<Signup userType="agent" />} />
+                
+                {/* Forgot Password Route */}
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                
+                {/* Customer ticket creation - protected route */}
+                <Route path="/customer/create-ticket" element={
+                  <PrivateRoute requiredRole="customer">
+                    <CreateTicket />
+                  </PrivateRoute>
+                } />
+                <Route path="/create-ticket" element={<Navigate to="/customer/create-ticket" replace />} />
+                
+                {/* Dashboard routes - protected routes */}
+                <Route path="/admin" element={
+                  <PrivateRoute requiredRole="admin">
+                    <AdminDashboard />
+                  </PrivateRoute>
+                } />
+                <Route path="/admin/agents" element={
+                  <PrivateRoute requiredRole="admin">
+                    <AgentManagement />
+                  </PrivateRoute>
+                } />
+                <Route path="/admin/analytics" element={
+                  <PrivateRoute requiredRole="admin">
+                    <AdminAnalytic />
+                  </PrivateRoute>
+                } />
+                <Route path="/admin/profile" element={
+                  <PrivateRoute requiredRole="admin">
+                    <AdminProfile />
+                  </PrivateRoute>
+                } />
+                <Route path="/agent" element={
+                  <PrivateRoute requiredRole="agent">
+                    <AgentDashboard />
+                  </PrivateRoute>
+                } />
+                <Route path="/agent/tickets" element={
+                  <PrivateRoute requiredRole="agent">
+                    <TicketList />
+                  </PrivateRoute>
+                } />
+                <Route path="/agent/profile" element={
+                  <PrivateRoute requiredRole="agent">
+                    <AgentProfile />
+                  </PrivateRoute>
+                } />
+                
+                {/* Customer Dashboard Routes - protected routes */}
+                <Route path="/customer" element={
+                  <PrivateRoute requiredRole="customer">
+                    <CustomerLayout />
+                  </PrivateRoute>
+                }>
+                  <Route index element={<CustomerHome />} />
+                  <Route path="dashboard" element={<Navigate to="/customer" replace />} />
+                  <Route path="tickets" element={<CustomerDashboard />} />
+                  <Route path="ticket/:ticketId" element={<TicketDetails />} />
+                  <Route path="help-center" element={<HelpCenter />} />
+                  <Route path="profile" element={<CustomerProfile />} />
+                </Route>
+                
+                {/* Public Help Center Route */}
+                <Route path="/help-center" element={<StandaloneHelpCenter />} />
+                
+                {/* Email Verification Pending Page */}
+                <Route path="/verification-pending" element={<VerificationPendingPage />} />
+                
+                {/* Route for handling email verification link */}
+                <Route path="/api/auth/verify-email/:token" element={<VerifyEmail />} />
 
-              {/* Route for handling password reset link */}
-              <Route path="/reset-password/:token" element={<ResetPassword />} />
-              
-              {/* Redirects for old routes */}
-              <Route path="/knowledge-base" element={<Navigate to="/help-center#knowledge" replace />} />
-              <Route path="/faq" element={<Navigate to="/help-center#faq" replace />} />
-              
-              {/* Fallback route */}
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </GoogleOAuthProvider>
-        </BrowserRouter>
+                {/* Route for handling password reset link */}
+                <Route path="/reset-password/:token" element={<ResetPassword />} />
+                
+                {/* Redirects for old routes */}
+                <Route path="/knowledge-base" element={<Navigate to="/help-center#knowledge" replace />} />
+                <Route path="/faq" element={<Navigate to="/help-center#faq" replace />} />
+                
+                {/* Fallback route */}
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </GoogleOAuthProvider>
+          </BrowserRouter>
+        </SocketProvider>
       </AuthProvider>
     </ErrorBoundary>
   );

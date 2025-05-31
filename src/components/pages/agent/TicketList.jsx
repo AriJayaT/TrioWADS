@@ -6,6 +6,7 @@ import logo from '/src/assets/logo.jpg';
 import ticketService from '../../../services/api/ticketService';
 import apiClient from '../../../services/api/apiClient';
 import NotificationBell from '../../common/NotificationBell';
+import { useTicketUpdates } from '../../../hooks/useTicketUpdates';
 
 const TicketList = () => {
   const navigate = useNavigate();
@@ -562,6 +563,52 @@ const TicketList = () => {
     result += `${minutes}m`;
     return result.trim();
   };
+
+  // Real-time ticket updates
+  useTicketUpdates(
+    (newTicket) => {
+      // Only add to unassignedTickets if not assigned and matches agent type
+      if (!newTicket.assignedTo) {
+        setUnassignedTickets(prev => {
+          // Avoid duplicates
+          if (prev.some(t => t._id === newTicket._id)) return prev;
+          // Filter by agent type
+          if (
+            (agentType === 'Senior' && newTicket.priority === 'high') ||
+            (agentType !== 'Senior' && (newTicket.priority === 'low' || newTicket.priority === 'medium'))
+          ) {
+            return [newTicket, ...prev];
+          }
+          return prev;
+        });
+      }
+    },
+    (updatedTicket) => {
+      // Update in assigned tickets
+      setTickets(prev => prev.map(t => t._id === updatedTicket._id ? updatedTicket : t));
+      // Update in unassigned tickets
+      setUnassignedTickets(prev => {
+        // If now assigned, remove from unassigned
+        if (updatedTicket.assignedTo) {
+          return prev.filter(t => t._id !== updatedTicket._id);
+        }
+        // If still unassigned and matches agent type, update or add
+        if (
+          (agentType === 'Senior' && updatedTicket.priority === 'high') ||
+          (agentType !== 'Senior' && (updatedTicket.priority === 'low' || updatedTicket.priority === 'medium'))
+        ) {
+          const exists = prev.some(t => t._id === updatedTicket._id);
+          if (exists) {
+            return prev.map(t => t._id === updatedTicket._id ? updatedTicket : t);
+          } else {
+            return [updatedTicket, ...prev];
+          }
+        }
+        // Otherwise, remove from unassigned
+        return prev.filter(t => t._id !== updatedTicket._id);
+      });
+    }
+  );
 
   if (loading) {
     return (
