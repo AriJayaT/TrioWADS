@@ -21,6 +21,11 @@ const notificationSchema = new mongoose.Schema({
   timestamp: {
     type: Date,
     default: Date.now
+  },
+  ticketId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Ticket',
+    required: false
   }
 });
 

@@ -11,11 +11,20 @@ const apiClient = axios.create({
   timeout: 30000, // Increased timeout to 30 seconds
 });
 
+// Helper function to get auth token
+const getAuthToken = () => {
+  const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+  if (!token) {
+    console.warn('No authentication token found in local storage');
+  }
+  return token;
+};
+
 // Request interceptor - add auth token to requests
 apiClient.interceptors.request.use(
   (config) => {
     try {
-      const token = localStorage.getItem('authToken');
+      const token = getAuthToken();
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
@@ -41,10 +50,16 @@ apiClient.interceptors.response.use(
     
     // Handle authentication errors
     if (error.response && error.response.status === 401) {
-      // Clear token and user data
+      // Clear all auth-related data
       localStorage.removeItem('authToken');
+      localStorage.removeItem('token');
       localStorage.removeItem('user');
       localStorage.removeItem('userRole');
+      
+      // Redirect to login page if not already there
+      if (!window.location.pathname.includes('/login')) {
+        window.location.href = '/login';
+      }
     }
     
     return Promise.reject(error);

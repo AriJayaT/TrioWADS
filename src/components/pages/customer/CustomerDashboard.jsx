@@ -3,6 +3,9 @@ import { Link } from 'react-router-dom';
 import ticketService from '../../../services/api/ticketService';
 import { useAuth } from '../../../context/AuthContext';
 import { FaTicketAlt } from 'react-icons/fa';
+import { useSocket } from '../../../context/SocketContext';
+import { useNotificationUpdates } from '../../../hooks/useNotificationUpdates';
+import NotificationBell from '../../common/NotificationBell';
 
 const CustomerDashboard = () => {
   const [tickets, setTickets] = useState([]);
@@ -10,7 +13,18 @@ const CustomerDashboard = () => {
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All Status');
+  const [notifications, setNotifications] = useState([]);
   const { user } = useAuth();
+  const { socket, subscribeToEvent, unsubscribeFromEvent } = useSocket();
+
+  // Handle new notifications
+  const handleNewNotification = (notification) => {
+    console.log('New notification received:', notification);
+    setNotifications(prev => [notification, ...prev]);
+  };
+
+  // Use the notification updates hook
+  useNotificationUpdates(handleNewNotification);
 
   useEffect(() => {
     const fetchTickets = async () => {
@@ -27,7 +41,72 @@ const CustomerDashboard = () => {
     };
 
     fetchTickets();
-  }, []);
+
+    // Subscribe to socket events
+    const handleTicketUpdate = (data) => {
+      console.log('Handling ticket update:', data);
+      setTickets(prevTickets => {
+        const updatedTickets = prevTickets.map(ticket => 
+          ticket._id === data._id ? { ...ticket, ...data, lastUpdated: new Date().toISOString() } : ticket
+        );
+        return updatedTickets;
+      });
+    };
+
+    const handleNewReply = (data) => {
+      console.log('Handling new reply:', data);
+      setTickets(prevTickets => {
+        const updatedTickets = prevTickets.map(ticket => 
+          ticket._id === data.ticket._id ? { ...ticket, ...data.ticket, lastUpdated: new Date().toISOString() } : ticket
+        );
+        return updatedTickets;
+      });
+    };
+
+    const handleTicketAssigned = (data) => {
+      console.log('Handling ticket assigned:', data);
+      setTickets(prevTickets => {
+        const exists = prevTickets.some(ticket => ticket._id === data._id);
+        if (exists) {
+          return prevTickets.map(ticket => 
+            ticket._id === data._id ? { ...ticket, ...data, lastUpdated: new Date().toISOString() } : ticket
+          );
+        }
+        return [{ ...data, lastUpdated: new Date().toISOString() }, ...prevTickets];
+      });
+    };
+
+    const handleTicketStatusChange = (data) => {
+      console.log('Handling ticket status change:', data);
+      setTickets(prevTickets => {
+        const updatedTickets = prevTickets.map(ticket => 
+          ticket._id === data._id ? { ...ticket, status: data.status, lastUpdated: new Date().toISOString() } : ticket
+        );
+        return updatedTickets;
+      });
+    };
+
+    const handleNewTicket = (data) => {
+      console.log('Handling new ticket:', data);
+      setTickets(prevTickets => [{ ...data, lastUpdated: new Date().toISOString() }, ...prevTickets]);
+    };
+
+    // Subscribe to events
+    subscribeToEvent('ticket_updated', handleTicketUpdate);
+    subscribeToEvent('new_reply', handleNewReply);
+    subscribeToEvent('ticket_assigned', handleTicketAssigned);
+    subscribeToEvent('ticket_status_change', handleTicketStatusChange);
+    subscribeToEvent('new_ticket', handleNewTicket);
+
+    // Cleanup subscriptions
+    return () => {
+      unsubscribeFromEvent('ticket_updated', handleTicketUpdate);
+      unsubscribeFromEvent('new_reply', handleNewReply);
+      unsubscribeFromEvent('ticket_assigned', handleTicketAssigned);
+      unsubscribeFromEvent('ticket_status_change', handleTicketStatusChange);
+      unsubscribeFromEvent('new_ticket', handleNewTicket);
+    };
+  }, [subscribeToEvent, unsubscribeFromEvent]);
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -115,11 +194,13 @@ const CustomerDashboard = () => {
     <>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-900">My Tickets</h1>
-        <Link to="/customer/create-ticket">
-          <button className="bg-pink-500 hover:bg-pink-600 text-white px-4 py-2 rounded-lg text-sm">
-            New Ticket
-          </button>
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link to="/customer/create-ticket">
+            <button className="bg-pink-500 hover:bg-pink-600 text-white px-4 py-2 rounded-lg text-sm">
+              New Ticket
+            </button>
+          </Link>
+        </div>
       </div>
 
       <div className="bg-white shadow rounded-lg p-6">

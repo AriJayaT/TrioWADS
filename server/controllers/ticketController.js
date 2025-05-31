@@ -4,6 +4,7 @@ import User from '../models/User.js';
 import mongoose from 'mongoose';
 import Rating from '../models/Rating.js';
 import Notification from '../models/Notification.js';
+import { emitToUser, emitToRole } from '../index.js';
 
 /**
  * Get all tickets (with filtering options)
@@ -62,6 +63,20 @@ export const getTickets = async (req, res) => {
   } catch (error) {
     console.error('Get tickets error:', error);
     res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// Helper function to emit stats update
+const emitStatsUpdate = async (io) => {
+  if (!io) return;
+
+  try {
+    // Get updated stats
+    const stats = await getTicketStats();
+    // Emit to all admin users
+    emitToRole('admin', 'stats_updated', stats);
+  } catch (error) {
+    console.error('Error emitting stats update:', error);
   }
 };
 
@@ -152,26 +167,35 @@ export const createTicket = async (req, res) => {
     // Notify all admins of new ticket
     const admins = await User.find({ role: 'admin' });
     for (const admin of admins) {
-      await Notification.create({
+      const notification = await Notification.create({
         user: admin._id,
         message: `A new ticket "${ticket.subject}" has been created by ${ticket.user.name}.`,
-        type: 'ticket_created'
+        type: 'ticket_created',
+        ticketId: ticket._id
       });
+      emitToUser(admin._id, 'new_notification', notification);
     }
     // Optionally, notify all agents as well (uncomment if needed)
     // const agents = await User.find({ role: 'agent' });
     // for (const agent of agents) {
-    //   await Notification.create({
+    //   const notification = await Notification.create({
     //     user: agent._id,
     //     message: `A new ticket "${ticket.subject}" has been created by ${ticket.user.name}.`,
-    //     type: 'ticket_created'
+    //     type: 'ticket_created',
+    //     ticketId: ticket._id
     //   });
+    //   emitToUser(agent._id, 'new_notification', notification);
     // }
 
-    // --- SOCKET.IO: Emit new_ticket event ---
+    // Emit socket events
     const io = req.app.get('io');
     if (io) {
-      io.emit('new_ticket', ticket); // You can filter/room this as needed
+      // Notify the customer
+      emitToUser(ticket.user._id, 'new_ticket', ticket);
+      // Notify admins
+      emitToRole('admin', 'new_ticket', ticket);
+      // Emit stats update
+      await emitStatsUpdate(io);
     }
 
     res.status(201).json({
@@ -266,179 +290,77 @@ export const getTicket = async (req, res) => {
 export const updateTicket = async (req, res) => {
   try {
     const { status, priority, assignedTo } = req.body;
-    
-    let ticket = await Ticket.findById(req.params.id);
+    const ticketId = req.params.id;
 
+    // Validate ticketId
+    if (!ticketId || !mongoose.Types.ObjectId.isValid(ticketId)) {
+      return res.status(400).json({ error: 'Invalid ticket ID' });
+    }
+
+    const ticket = await Ticket.findById(ticketId);
     if (!ticket) {
       return res.status(404).json({ error: 'Ticket not found' });
     }
 
-    // Check if user has permission to update ticket
+    // Check permissions
     if (req.user.role === 'customer' && ticket.user.toString() !== req.user.id) {
-      return res.status(403).json({ error: 'Not authorized to update this ticket' });
-    }
-    
-    // If user is an agent, they can only update tickets assigned to them
-    if (req.user.role === 'agent' && 
-        ticket.assignedTo && 
-        ticket.assignedTo.toString() !== req.user.id) {
-      return res.status(403).json({ error: 'Not authorized to update this ticket - it is assigned to another agent' });
+      return res.status(403).json({ error: 'Not authorized' });
     }
 
-    // Customers can only close tickets or set to waiting-for-agent, not update other fields
-    if (req.user.role === 'customer') {
-      if (req.body.status && req.body.status !== 'closed' && req.body.status !== 'waiting-for-agent') {
-        return res.status(403).json({ error: 'Customers can only close their tickets or set to waiting for agent' });
-      }
-      
-      // If customer is confirming resolution by marking as closed
-      if (req.body.status === 'closed') {
-        ticket.status = 'closed';
-        
-        // If this is a resolution confirmation, log it
-        if (ticket.status === 'resolved') {
-          console.log(`Ticket ${ticket._id} was confirmed as resolved by customer ${req.user.id}`);
-        }
-      } else if (req.body.status === 'waiting-for-agent') {
-        // If customer is continuing conversation after resolution attempt
-        if (ticket.status === 'resolved') {
-          console.log(`Ticket ${ticket._id} was reopened by customer ${req.user.id}`);
-        }
-        ticket.status = 'waiting-for-agent';
-      }
-    } else {
-      // Agents and admins can update all fields
-      if (status) {
-        // Log all status changes clearly
-        if (status !== ticket.status) {
-          console.log(`Ticket status change: ${ticket._id} from "${ticket.status}" to "${status}" by agent ${req.user.id} (${req.user.name || 'Unknown'})`);
-          
-          // Special log for resolution
-          if (status === 'resolved') {
-            console.log(`RESOLUTION: Ticket ${ticket._id} was marked as resolved by agent ${req.user.id} (${req.user.name || 'Unknown'})`);
-            // Notify customer of resolution
-            await Notification.create({
-              user: ticket.user,
-              message: `Your ticket "${ticket.subject}" has been marked as resolved by support.`,
-              type: 'ticket_resolved'
-            });
-          }
-          // Notify customer if closed
-          if (status === 'closed') {
-            await Notification.create({
-              user: ticket.user,
-              message: `Your ticket "${ticket.subject}" has been closed.`,
-              type: 'ticket_closed'
-            });
-          }
-          // Notify agent if customer reopens ticket
-          if (ticket.status === 'resolved' && status === 'waiting-for-agent' && ticket.assignedTo) {
-            await Notification.create({
-              user: ticket.assignedTo,
-              message: `Customer has reopened ticket "${ticket.subject}".`,
-              type: 'ticket_reopened'
-            });
-          }
-        }
-        ticket.status = status;
-      }
-      if (priority) ticket.priority = priority;
-      
-      // Handle ticket assignment
-      if (assignedTo) {
-        // When an agent is assigning to themselves
-        if (req.user.role === 'agent' && assignedTo === req.user.id) {
-          // Check if this ticket is already assigned
-          if (ticket.assignedTo && ticket.assignedTo.toString() !== req.user.id) {
-            return res.status(400).json({ error: 'This ticket is already assigned to another agent' });
-          }
-          
-          // Check agent type compatibility with ticket priority
-          if (req.user.agentType === 'Junior' && ticket.priority === 'high') {
-            return res.status(400).json({ error: 'Junior agents cannot be assigned high priority tickets' });
-          }
-          
-          if (req.user.agentType === 'Senior' && (ticket.priority === 'low' || ticket.priority === 'medium')) {
-            return res.status(400).json({ error: 'Senior agents cannot be assigned low or medium priority tickets' });
-          }
-          
-          // Self-assignment is allowed
-          ticket.assignedTo = assignedTo;
-          console.log(`Ticket ${ticket._id} self-assigned to agent ${req.user.id} (${req.user.name || 'Unknown'})`);
+    // Build update object
+    const updateData = {};
+    if (status) updateData.status = status;
+    if (priority) updateData.priority = priority;
+    if (assignedTo) updateData.assignedTo = assignedTo;
 
-          // Create notification for customer
-          await Notification.create({
-            user: ticket.user,
-            message: `Your ticket "${ticket.subject}" has been assigned to an agent and is now in progress.`,
-            type: 'ticket_assigned'
-          });
+    // Update ticket
+    const updatedTicket = await Ticket.findByIdAndUpdate(
+      ticketId,
+      { $set: updateData },
+      { new: true }
+    ).populate('user', 'name email')
+     .populate('assignedTo', 'name email');
 
-          // Create notification for admin
-          const admin = await User.findOne({ role: 'admin' });
-          if (admin) {
-            await Notification.create({
-              user: admin._id,
-              message: `Ticket "${ticket.subject}" has been assigned to agent ${req.user.name}.`,
-              type: 'ticket_assigned'
-            });
-          }
-        }
-        // Only admins can reassign tickets to other agents
-        else if (req.user.role === 'admin') {
-          // Check if the agent exists and get their type before assignment
-          const agent = await User.findById(assignedTo);
-          if (!agent) {
-            return res.status(400).json({ error: 'Agent not found' });
-          }
-          
-          // Enforce agent type and ticket priority matching
-          if (agent.agentType === 'Junior' && ticket.priority === 'high') {
-            return res.status(400).json({ error: 'Junior agents cannot be assigned high priority tickets' });
-          }
-          
-          if (agent.agentType === 'Senior' && (ticket.priority === 'low' || ticket.priority === 'medium')) {
-            return res.status(400).json({ error: 'Senior agents cannot be assigned low or medium priority tickets' });
-          }
-          
-          ticket.assignedTo = assignedTo;
-          console.log(`Ticket ${ticket._id} assigned to agent ${assignedTo} by admin ${req.user.id}`);
+    // Create notification for assignment
+    if (assignedTo && assignedTo !== ticket.assignedTo?.toString()) {
+      const notification = await Notification.create({
+        user: assignedTo,
+        message: `You have been assigned to ticket "${ticket.subject}"`,
+        type: 'ticket_assigned',
+        ticketId: ticket._id
+      });
 
-          // Create notification for customer
-          await Notification.create({
-            user: ticket.user,
-            message: `Your ticket "${ticket.subject}" has been assigned to an agent and is now in progress.`,
-            type: 'ticket_assigned'
-          });
+      // Notify the assigned agent
+      emitToUser(assignedTo, 'ticket_assigned', updatedTicket);
+      emitToUser(assignedTo, 'new_notification', notification);
 
-          // Create notification for the assigned agent
-          await Notification.create({
-            user: assignedTo,
-            message: `You have been assigned ticket "${ticket.subject}".`,
-            type: 'ticket_assigned'
-          });
-        }
-      }
+      // Also notify the customer about the assignment
+      const customerNotification = await Notification.create({
+        user: ticket.user,
+        message: `Your ticket "${ticket.subject}" has been assigned to a support agent.`,
+        type: 'ticket_assigned',
+        ticketId: ticket._id
+      });
+      emitToUser(ticket.user._id, 'new_notification', customerNotification);
     }
 
-    // Update lastUpdated timestamp
-    ticket.lastUpdated = Date.now();
-    
-    await ticket.save();
-
-    // --- SOCKET.IO: Emit ticket_updated event ---
+    // Emit socket events
     const io = req.app.get('io');
     if (io) {
-      io.emit('ticket_updated', ticket); // You can filter/room this as needed
+      // Notify all relevant users about the update
+      emitToUser(ticket.user._id, 'ticket_updated', updatedTicket);
+      if (ticket.assignedTo) {
+        emitToUser(ticket.assignedTo._id, 'ticket_updated', updatedTicket);
+      }
+      // Notify admins
+      emitToRole('admin', 'ticket_updated', updatedTicket);
+      // Emit stats update
+      await emitStatsUpdate(io);
     }
-
-    // Re-fetch with populated fields
-    ticket = await Ticket.findById(req.params.id)
-      .populate('user', 'name email')
-      .populate('assignedTo', 'name email');
 
     res.status(200).json({
       success: true,
-      ticket
+      ticket: updatedTicket
     });
   } catch (error) {
     console.error('Update ticket error:', error);
@@ -517,19 +439,47 @@ export const addReply = async (req, res) => {
     if (req.user.role === 'customer') {
       // Notify assigned agent (if any)
       if (ticket.assignedTo) {
-        await Notification.create({
+        const notification = await Notification.create({
           user: ticket.assignedTo,
           message: `Customer replied to ticket "${ticket.subject}".`,
-          type: 'ticket_reply'
+          type: 'ticket_reply',
+          ticketId: ticket._id
         });
+        emitToUser(ticket.assignedTo._id, 'new_notification', notification);
+      }
+      // Also notify admins about customer reply
+      const admins = await User.find({ role: 'admin' });
+      for (const admin of admins) {
+        const adminNotification = await Notification.create({
+          user: admin._id,
+          message: `Customer replied to ticket "${ticket.subject}".`,
+          type: 'ticket_reply',
+          ticketId: ticket._id
+        });
+        emitToUser(admin._id, 'new_notification', adminNotification);
       }
     } else if (req.user.role === 'agent' || req.user.role === 'admin') {
       // Notify customer
-      await Notification.create({
+      const notification = await Notification.create({
         user: ticket.user,
         message: `You have a new reply from support on ticket "${ticket.subject}".`,
-        type: 'ticket_reply'
+        type: 'ticket_reply',
+        ticketId: ticket._id
       });
+      emitToUser(ticket.user._id, 'new_notification', notification);
+    }
+
+    // Emit socket events
+    const io = req.app.get('io');
+    if (io) {
+      // Notify ticket owner
+      emitToUser(ticket.user._id, 'new_reply', { ticket, reply });
+      // Notify assigned agent if different from reply sender
+      if (ticket.assignedTo && ticket.assignedTo._id.toString() !== req.user.id) {
+        emitToUser(ticket.assignedTo._id, 'new_reply', { ticket, reply });
+      }
+      // Notify admins
+      emitToRole('admin', 'new_reply', { ticket, reply });
     }
 
     res.status(201).json({
@@ -549,8 +499,11 @@ export const addReply = async (req, res) => {
  */
 export const getTicketStats = async (req, res) => {
   try {
-    if (req.user.role === 'customer') {
-      return res.status(403).json({ error: 'Not authorized' });
+    // Check if this is an API call (has req and res)
+    if (req && res) {
+      if (req.user.role === 'customer') {
+        return res.status(403).json({ error: 'Not authorized' });
+      }
     }
 
     // Overall counts
@@ -578,19 +531,74 @@ export const getTicketStats = async (req, res) => {
       .sort({ lastUpdated: -1 })
       .limit(5);
 
-    res.status(200).json({
-      success: true,
-      stats: {
-        total,
-        statusCounts: { open, inProgress, waitingForCustomer, resolved, closed },
-        priorityCounts: { high: highPriority, medium: mediumPriority, low: lowPriority },
-        categoryBreakdown,
-        recentActivity: recentTickets
+    // Calculate agent stats
+    const activeAgents = await User.countDocuments({ role: 'agent', status: 'active' });
+    const totalAgents = await User.countDocuments({ role: 'agent' });
+    const agentChange = activeAgents - (await User.countDocuments({ role: 'agent', status: 'active', lastActive: { $lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } }));
+
+    // Calculate response time stats
+    const avgResponseTime = await Ticket.aggregate([
+      { $match: { status: { $in: ['resolved', 'closed'] } } },
+      { $group: { _id: null, avg: { $avg: { $subtract: ['$resolvedAt', '$createdAt'] } } } }
+    ]);
+    const responseTimeChange = avgResponseTime[0]?.avg ? ((avgResponseTime[0].avg - (await Ticket.aggregate([
+      { $match: { status: { $in: ['resolved', 'closed'] }, resolvedAt: { $lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } } },
+      { $group: { _id: null, avg: { $avg: { $subtract: ['$resolvedAt', '$createdAt'] } } } }
+    ]))[0]?.avg || 0) / (avgResponseTime[0].avg || 1)) * 100 : 0;
+
+    // Calculate CSAT stats
+    const csatScores = await Rating.aggregate([
+      { $group: { _id: null, avg: { $avg: '$rating' } } }
+    ]);
+    const csatScore = csatScores[0]?.avg || 0;
+    const csatChange = csatScore - (await Rating.aggregate([
+      { $match: { createdAt: { $lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } } },
+      { $group: { _id: null, avg: { $avg: '$rating' } } }
+    ]))[0]?.avg || 0;
+
+    // Calculate ticket volume change
+    const currentVolume = await Ticket.countDocuments({ createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } });
+    const previousVolume = await Ticket.countDocuments({ createdAt: { $gte: new Date(Date.now() - 48 * 60 * 60 * 1000), $lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } });
+    const ticketVolumeChange = previousVolume ? ((currentVolume - previousVolume) / previousVolume) * 100 : 0;
+
+    const stats = {
+      total,
+      statusCounts: { open, inProgress, waitingForCustomer, resolved, closed },
+      priorityCounts: { high: highPriority, medium: mediumPriority, low: lowPriority },
+      categoryBreakdown,
+      recentActivity: recentTickets,
+      activeAgents,
+      totalAgents,
+      agentChange,
+      avgResponseTime: avgResponseTime[0]?.avg ? Math.round(avgResponseTime[0].avg / (60 * 1000)) : 0, // Convert to minutes
+      responseTimeChange: Math.round(responseTimeChange),
+      csatScore,
+      csatChange: Math.round(csatChange * 10) / 10,
+      ticketVolumeChange: Math.round(ticketVolumeChange)
+    };
+
+    // If this is an API call, send the response
+    if (req && res) {
+      // Emit socket event for stats update
+      const io = req.app.get('io');
+      if (io) {
+        emitToRole('admin', 'stats_updated', stats);
       }
-    });
+
+      return res.status(200).json({
+        success: true,
+        stats
+      });
+    }
+
+    // If this is a helper function call, return the stats
+    return stats;
   } catch (error) {
     console.error('Get ticket stats error:', error);
-    res.status(500).json({ error: 'Server error' });
+    if (req && res) {
+      return res.status(500).json({ error: 'Server error' });
+    }
+    throw error;
   }
 };
 
@@ -875,19 +883,46 @@ export const escalateTicket = async (req, res) => {
       });
 
       // Create notifications
-      await Notification.create({
+      const notifSenior = await Notification.create({
         user: seniorAgent._id,
         message: `Ticket #${ticket.ticketNumber} has been escalated to you by ${req.user.role === 'customer' ? 'customer' : 'junior agent'}.`,
-        type: 'ticket_escalated'
+        type: 'ticket_escalated',
+        ticketId: ticket._id
       });
+      emitToUser(seniorAgent._id, 'new_notification', notifSenior);
 
-      await Notification.create({
+      const notifCustomer = await Notification.create({
         user: ticket.user,
         message: `Your ticket #${ticket.ticketNumber} has been escalated to a senior agent.`,
-        type: 'ticket_escalated'
+        type: 'ticket_escalated',
+        ticketId: ticket._id
       });
+      emitToUser(ticket.user._id, 'new_notification', notifCustomer);
+
+      // Also notify admins about the escalation
+      const admins = await User.find({ role: 'admin' });
+      for (const admin of admins) {
+        const adminNotification = await Notification.create({
+          user: admin._id,
+          message: `Ticket #${ticket.ticketNumber} has been escalated to a senior agent.`,
+          type: 'ticket_escalated',
+          ticketId: ticket._id
+        });
+        emitToUser(admin._id, 'new_notification', adminNotification);
+      }
 
       await ticket.save();
+
+      // Emit socket events
+      const io = req.app.get('io');
+      if (io) {
+        // Notify all relevant users about the escalation
+        emitToUser(ticket.user._id, 'ticket_escalated', ticket);
+        if (ticket.assignedTo) {
+          emitToUser(ticket.assignedTo._id, 'ticket_escalated', ticket);
+        }
+        emitToRole('admin', 'ticket_escalated', ticket);
+      }
 
       res.json({
         success: true,

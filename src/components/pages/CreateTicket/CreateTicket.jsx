@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FaBell, FaHome, FaTicketAlt, FaArrowLeft, FaTimes } from 'react-icons/fa';
+import { FaBell, FaHome, FaTicketAlt, FaArrowLeft, FaTimes, FaCheckCircle } from 'react-icons/fa';
 import { IoMdArrowDropdown, IoMdHelpCircle } from 'react-icons/io';
 import logo from '/src/assets/logo.jpg';
 import CustomerHeader from '../../common/CustomerHeader';
@@ -255,81 +255,64 @@ const CreateTicket = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const validationErrors = validate();
     
-    if (Object.keys(validationErrors).length === 0) {
-      try {
-        const articles = await findRelatedArticles();
-        setRelatedArticles(articles);
-        
-        if (articles.length > 0) {
-          setShowRelatedArticles(true);
-        } else {
-          proceedWithSubmission();
-        }
-      } catch (error) {
-        proceedWithSubmission();
-      }
-    } else {
+    // Validate form
+    const validationErrors = validate();
+    if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
+      return;
     }
-  };
-  
-  const proceedWithSubmission = async () => {
+    
     setIsSubmitting(true);
     
     try {
-      // Create ticket data object
+      // Prepare ticket data
       const ticketData = {
         subject: formData.subject,
-        description: formData.description,
         category: formData.category,
         subcategory: formData.subcategory,
-        attachments: formData.attachments,
-        priority: getPriority()
+        description: formData.description,
+        priority: getPriority(),
+        attachments: formData.attachments
       };
       
-      console.log('Submitting ticket with data:', ticketData);
-      
-      // Call the API to create the ticket
+      // Create ticket
       const response = await ticketService.createTicket(ticketData);
-      console.log('Ticket submission response:', response);
       
-      // Set the ticket reference from the response
-      setTicketReference(response.ticket.ticketNumber);
-      setSubmitSuccess(true);
-      setShowRelatedArticles(false);
-      
-      // Navigate to tickets page after showing success message
-      setTimeout(() => {
-        navigate('/customer');
-      }, 5000); // Increased to 5 seconds to give users more time to see the ticket ID
+      if (response && response.ticket) {
+        // Set ticket reference for success message
+        const ticketNumber = response.ticket.ticketNumber || response.ticket._id;
+        setTicketReference(ticketNumber);
+        setSubmitSuccess(true);
+        
+        // Clear form
+        setFormData({
+          subject: '',
+          category: '',
+          subcategory: '',
+          description: '',
+          attachments: []
+        });
+        
+        // Clear errors
+        setErrors({});
+        
+        // Show success message for at least 5 seconds
+        setTimeout(() => {
+          // Only navigate if the user hasn't clicked any buttons
+          if (submitSuccess) {
+            navigate('/customer/tickets');
+          }
+        }, 5000);
+      } else {
+        throw new Error('Invalid response from server');
+      }
     } catch (error) {
       console.error('Error creating ticket:', error);
-      console.error('Error details:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status
+      setErrors({
+        submit: error.message || 'Failed to create ticket. Please try again.'
       });
-      
-      // Handle specific error cases
-      if (error.response?.status === 401) {
-        // Token expired or invalid
-        setErrors({
-          ...errors,
-          submit: 'Your session has expired. Please log in again.'
-        });
-        // Redirect to login after a short delay
-        setTimeout(() => {
-          navigate('/login');
-        }, 3000);
-      } else {
-        // Handle other errors
-        setErrors({
-          ...errors,
-          submit: typeof error === 'string' ? error : 'Failed to submit ticket. Please try again.'
-        });
-      }
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -413,14 +396,14 @@ const CreateTicket = () => {
           </div>
 
           {submitSuccess ? (
-            <div className="bg-green-50 p-6 rounded-xl text-center">
-              <div className="text-green-500 text-5xl mb-4">✓</div>
-              <h2 className="text-2xl font-bold text-gray-800 mb-4">Your ticket has been submitted</h2>
-              <p className="text-gray-700 text-center mb-4">
-                Your ticket ID is: <span className="font-semibold">{ticketReference}</span>
-              </p>
-              <p className="text-gray-600 mb-4">We'll get back to you shortly.</p>
-              <p className="text-sm text-gray-500">Redirecting you to your tickets...</p>
+            <div className="max-w-2xl mx-auto bg-white rounded-lg shadow-md p-6">
+              <div className="text-center">
+                <FaCheckCircle className="mx-auto text-green-500 text-5xl mb-4" />
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Ticket Created Successfully!</h2>
+                <p className="text-gray-600 mb-4">
+                  Your ticket has been created with reference number: <span className="font-semibold">{ticketReference}</span>
+                </p>
+              </div>
             </div>
           ) : showRelatedArticles ? (
             <div className="bg-white p-6 rounded-xl shadow-sm">

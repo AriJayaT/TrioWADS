@@ -1,7 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { FaCommentDots, FaTimes, FaPaperPlane, FaSpinner } from 'react-icons/fa';
 import { useAuth } from '../../context/AuthContext';
+import apiClient from '../../services/apiClient';
 import { sendMessage, getChatAvailability } from '../../services/ChatService';
+import { useChatUpdates } from '../../hooks/useChatUpdates';
+import { useSocket } from '../../context/SocketContext';
 
 const ChatWidget = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -10,9 +13,85 @@ const ChatWidget = () => {
   const [typing, setTyping] = useState(false);
   const [availability, setAvailability] = useState({ available: false, agentsAvailable: 0, estimatedWaitTime: '' });
   const [isLoading, setIsLoading] = useState(false);
+  const [notification, setNotification] = useState(null);
+  const [chatId, setChatId] = useState(null);
+  const [recipientId, setRecipientId] = useState(null);
   const { user } = useAuth();
   const messagesEndRef = useRef(null);
-  
+  const { socket, isConnected } = useSocket();
+  const notificationTimeoutRef = useRef(null);
+
+  // Real-time handlers
+  const handleNewMessage = useCallback((message) => {
+    console.log('[ChatWidget] handleNewMessage called:', message);
+    console.log('[ChatWidget] Received new message:', message);
+    setMessages((prev) => {
+      // Check if message already exists to prevent duplicates
+      const messageExists = prev.some(m => 
+        m.id === message.id || 
+        (m.timestamp === message.timestamp && m.content === message.content)
+      );
+      if (messageExists) {
+        console.log('[ChatWidget] Message already exists, skipping:', message);
+        return prev;
+      }
+      
+      // Format the message with proper sender information
+      const formattedMessage = {
+        ...message,
+        sender: message.senderId === user?.id ? 'me' : message.sender || 'agent',
+        senderName: message.senderName || (message.sender === 'agent' ? 'Support Agent' : 'You')
+      };
+      
+      console.log('[ChatWidget] Adding new message:', formattedMessage);
+      
+      // Show notification if chat is closed and message is from other user
+      if (!isOpen && message.senderId !== user?.id) {
+        // Clear any existing notification timeout
+        if (notificationTimeoutRef.current) {
+          clearTimeout(notificationTimeoutRef.current);
+        }
+        
+        setNotification({
+          content: message.content,
+          senderName: formattedMessage.senderName,
+          timestamp: message.timestamp
+        });
+        
+        // Auto-hide notification after 5 seconds
+        notificationTimeoutRef.current = setTimeout(() => {
+          setNotification(null);
+        }, 5000);
+      }
+      
+      return [...prev, formattedMessage];
+    });
+  }, [user?.id, isOpen]);
+
+  const handleTypingStatus = useCallback((status) => {
+    console.log('[ChatWidget] Received typing status:', status);
+    if (status.userId !== user?.id) {
+      setTyping(status.isTyping);
+    }
+  }, [user?.id]);
+
+  // Use the chat updates hook
+  useChatUpdates(handleNewMessage, handleTypingStatus);
+
+  // Load initial messages
+  useEffect(() => {
+    const loadInitialMessages = async () => {
+      if (!user?.id || !chatId) return;
+      try {
+        const response = await apiClient.get('/chat/messages', { params: { chatId } });
+        setMessages(response.data);
+      } catch (error) {
+        console.error('Error loading initial messages:', error);
+      }
+    };
+    loadInitialMessages();
+  }, [user?.id, chatId]);
+
   // Check chat availability
   useEffect(() => {
     const checkAvailability = async () => {
@@ -23,15 +102,11 @@ const ChatWidget = () => {
         console.error("Failed to fetch chat availability:", error);
       }
     };
-    
     checkAvailability();
-    
-    // Refresh availability status every minute
     const intervalId = setInterval(checkAvailability, 60000);
-    
     return () => clearInterval(intervalId);
   }, []);
-  
+
   // Initial greeting when chat is first opened
   useEffect(() => {
     if (isOpen && messages.length === 0) {
@@ -49,14 +124,14 @@ const ChatWidget = () => {
       setMessages(initialMessages);
     }
   }, [isOpen, availability]);
-  
+
   // Auto-scroll to latest message
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages]);
-  
+
   // Toggle chat open/closed
   const toggleChat = () => {
     setIsOpen(!isOpen);
@@ -65,52 +140,47 @@ const ChatWidget = () => {
   // Handle sending new message
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    
-    if (!newMessage.trim()) return;
-    
-    // Add user message
+    if (!newMessage.trim() || !socket || !isConnected) {
+      console.log('[ChatWidget] Cannot send message - socket not connected or empty message');
+      return;
+    }
+
     const userMessage = {
-      id: messages.length + 1,
-      sender: 'user',
-      senderName: user?.name || 'You',
+      chatId,
+      senderId: user?.id,
+      recipientId,
       content: newMessage,
       timestamp: new Date().toISOString(),
     };
-    
-    setMessages([...messages, userMessage]);
-    setNewMessage('');
-    
-    // Simulate agent typing
-    setTyping(true);
-    
+
     try {
-      // Send message to service and get response
-      const response = await sendMessage(newMessage);
+      console.log('[ChatWidget] Sending message:', userMessage);
       
-      const agentMessage = {
-        id: messages.length + 2,
-        sender: 'agent',
-        senderName: response.agentName || 'YipHelp Support',
-        content: response.content,
-        timestamp: response.timestamp || new Date().toISOString(),
-      };
+      // Add message to local state immediately
+      setMessages(prev => [...prev, { 
+        ...userMessage, 
+        sender: 'me', 
+        senderName: 'You',
+        id: Date.now().toString() // Add unique ID for message
+      }]);
+      setNewMessage('');
       
-      setMessages(prev => [...prev, agentMessage]);
+      // Send message through socket
+      socket.emit('send_message', userMessage);
+      
+      // Ensure we're in the chat room
+      socket.emit('join_room', chatId);
     } catch (error) {
-      console.error("Error sending message:", error);
-      
-      // Add error message
+      console.error('[ChatWidget] Error sending message:', error);
       const errorMessage = {
-        id: messages.length + 2,
-        sender: 'agent',
+        id: Date.now().toString(),
+        chatId,
+        sender: 'system',
         senderName: 'System',
         content: "Sorry, we encountered an error. Please try again later.",
         timestamp: new Date().toISOString(),
       };
-      
       setMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setTyping(false);
     }
   };
 
@@ -120,8 +190,139 @@ const ChatWidget = () => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  // Initialize chat session
+  useEffect(() => {
+    const initializeChat = async () => {
+      if (!user?.id) {
+        console.log('[ChatWidget] No user ID available, skipping chat initialization');
+        return;
+      }
+
+      // If we already have a chatId, just load messages and join room
+      if (chatId) {
+        console.log('[ChatWidget] Chat session already initialized, loading messages');
+        try {
+          const messagesResponse = await apiClient.get('/chat/messages', {
+            params: { chatId }
+          });
+          setMessages(messagesResponse.data);
+          
+          // Join the chat room
+          if (socket && isConnected) {
+            console.log('[ChatWidget] Joining chat room:', chatId);
+            socket.emit('join_room', chatId);
+          }
+        } catch (error) {
+          console.error('[ChatWidget] Error loading messages:', error);
+        }
+        return;
+      }
+
+      try {
+        console.log('[ChatWidget] Initializing chat session for user:', user.id);
+        const response = await apiClient.post('/chat/initialize', {
+          userId: user.id
+        });
+        
+        console.log('[ChatWidget] Chat session initialized:', response.data);
+        setChatId(response.data.chatId);
+        setRecipientId(response.data.recipientId);
+        
+        // Load initial messages and join room
+        if (response.data.chatId) {
+          const messagesResponse = await apiClient.get('/chat/messages', {
+            params: { chatId: response.data.chatId }
+          });
+          setMessages(messagesResponse.data);
+          
+          // Join the chat room
+          if (socket && isConnected) {
+            console.log('[ChatWidget] Joining chat room:', response.data.chatId);
+            socket.emit('join_room', response.data.chatId);
+          }
+        }
+      } catch (error) {
+        console.error('[ChatWidget] Error initializing chat:', error);
+      }
+    };
+
+    initializeChat();
+  }, [user?.id, chatId, socket, isConnected]);
+
+  // Add a useEffect to join the chat room whenever chatId and socket are available
+  useEffect(() => {
+    if (chatId && socket && isConnected) {
+      console.log('[ChatWidget] Joining chat room:', chatId);
+      socket.emit('join_room', chatId, (response) => {
+        if (response && response.success) {
+          console.log('[ChatWidget] Successfully joined chat room:', chatId);
+        } else {
+          console.error('[ChatWidget] Failed to join chat room:', response?.error || 'Unknown error');
+        }
+      });
+    }
+  }, [chatId, socket, isConnected]);
+
+  // Add socket connection status logging
+  useEffect(() => {
+    if (socket) {
+      const handleConnect = () => {
+        console.log('[ChatWidget] Socket connected');
+        if (chatId) {
+          console.log('[ChatWidget] Re-joining chat room after reconnection:', chatId);
+          socket.emit('join_room', chatId);
+        }
+      };
+
+      const handleDisconnect = (reason) => {
+        console.log('[ChatWidget] Socket disconnected:', reason);
+      };
+
+      socket.on('connect', handleConnect);
+      socket.on('disconnect', handleDisconnect);
+
+      return () => {
+        socket.off('connect', handleConnect);
+        socket.off('disconnect', handleDisconnect);
+      };
+    }
+  }, [socket, chatId]);
+
+  useEffect(() => {
+    console.log('ChatWidget mounted, user:', user);
+  }, [user]);
+
+  useEffect(() => {
+    console.log('[ChatWidget] useChatUpdates hook registered');
+  }, []);
+
+  // Cleanup notification timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (notificationTimeoutRef.current) {
+        clearTimeout(notificationTimeoutRef.current);
+      }
+    };
+  }, []);
+
   return (
     <div className="fixed bottom-8 right-8 z-50">
+      {/* Notification */}
+      {notification && (
+        <div 
+          className="absolute bottom-24 right-0 bg-white text-gray-800 px-4 py-3 rounded-lg shadow-lg animate-bounce border border-pink-200 max-w-xs cursor-pointer"
+          onClick={() => {
+            setIsOpen(true);
+            setNotification(null);
+          }}
+        >
+          <div className="font-medium text-pink-500 mb-1">{notification.senderName}</div>
+          <div className="text-sm">{notification.content}</div>
+          <div className="text-xs text-gray-500 mt-1">
+            {new Date(notification.timestamp).toLocaleTimeString()}
+          </div>
+        </div>
+      )}
       {/* Chat Button */}
       <button
         onClick={toggleChat}
@@ -132,7 +333,6 @@ const ChatWidget = () => {
       >
         <FaCommentDots className="text-white text-xl" />
       </button>
-
       {/* Chat Window */}
       <div
         className={`bg-white rounded-xl shadow-xl overflow-hidden transition-all duration-300 flex flex-col ${
@@ -159,22 +359,21 @@ const ChatWidget = () => {
             <FaTimes />
           </button>
         </div>
-
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
-          {messages.map((message) => (
+          {messages.map((message, idx) => (
             <div
-              key={message.id}
-              className={`mb-3 flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+              key={idx}
+              className={`mb-3 flex ${message.senderId === user?.id ? 'justify-end' : 'justify-start'}`}
             >
               <div
                 className={`rounded-lg px-4 py-2 max-w-[80%] ${
-                  message.sender === 'user'
+                  message.senderId === user?.id
                     ? 'bg-pink-500 text-white'
                     : 'bg-white shadow-sm border border-gray-200'
                 }`}
               >
-                {message.sender === 'agent' && (
+                {message.senderName && message.senderId !== user?.id && (
                   <div className="text-xs font-medium text-gray-600 mb-1">
                     {message.senderName}
                   </div>
@@ -186,8 +385,7 @@ const ChatWidget = () => {
               </div>
             </div>
           ))}
-          
-          {/* Typing indicator */}
+          {/* Typing indicator (optional) */}
           {typing && (
             <div className="flex justify-start mb-3">
               <div className="bg-white shadow-sm border border-gray-200 rounded-lg px-4 py-2">
@@ -199,10 +397,8 @@ const ChatWidget = () => {
               </div>
             </div>
           )}
-          
           <div ref={messagesEndRef} />
         </div>
-
         {/* Input */}
         <form onSubmit={handleSendMessage} className="p-3 border-t">
           <div className="flex items-center bg-gray-100 rounded-lg px-3 py-2">

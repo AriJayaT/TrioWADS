@@ -117,132 +117,162 @@ const CreateTicket = () => {
   };
   
   return (
-    <div className="max-w-4xl mx-auto px-4 py-6">
-      <button
-        onClick={() => navigate('/customer')}
-        className="flex items-center text-pink-500 hover:text-pink-600 mb-6"
-      >
-        <FaArrowLeft className="mr-2" /> Back to Dashboard
-      </button>
-      
-      <div className="bg-white rounded-lg shadow-lg p-6">
-        <h1 className="text-2xl font-bold mb-6">Create New Support Ticket</h1>
-        
-        {submitSuccess ? (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-6 mb-6 text-center">
-            <div className="text-green-500 text-5xl mb-4">✓</div>
-            <h2 className="text-green-700 font-medium text-lg mb-2">Ticket Created Successfully!</h2>
-            <p className="text-green-600 mb-4">
-              Your ticket has been submitted with reference number: 
-              <span className="bg-green-100 px-3 py-1 rounded-lg font-bold ml-2">{ticketReference}</span>
-            </p>
-            <p className="text-green-600 mb-2">Our support team will review your ticket shortly.</p>
-            <p className="text-sm text-gray-500">You will be redirected to your dashboard in a few seconds...</p>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit}>
-            {errors.submit && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 text-red-600">
-                {errors.submit}
+    <div className="min-h-screen flex flex-col bg-pink-50">
+      <div className="max-w-4xl mx-auto px-4 py-6 w-full">
+        <button
+          onClick={() => navigate('/customer')}
+          className="flex items-center text-pink-500 hover:text-pink-600 mb-6"
+        >
+          <FaArrowLeft className="mr-2" /> Back to Dashboard
+        </button>
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <h1 className="text-2xl font-bold mb-6">Create New Support Ticket</h1>
+          {submitSuccess ? (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-6 mb-6 text-center">
+              <div className="text-green-500 text-5xl mb-4">✓</div>
+              <h2 className="text-green-700 font-medium text-lg mb-2">Ticket Created Successfully!</h2>
+              <p className="text-green-600 mb-4">
+                Your ticket has been submitted with reference number: 
+                <span className="bg-green-100 px-3 py-1 rounded-lg font-bold ml-2">{ticketReference}</span>
+              </p>
+              <p className="text-green-600 mb-2">Our support team will review your ticket shortly.</p>
+              <p className="text-sm text-gray-500">You will be redirected to your dashboard in a few seconds...</p>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit}>
+              {errors.submit && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 text-red-600">
+                  {errors.submit}
+                </div>
+              )}
+              <div className="mb-4">
+                <label className="block text-gray-700 font-medium mb-2">
+                  Subject <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  name="subject"
+                  value={formData.subject}
+                  onChange={handleChange}
+                  className={`w-full p-3 border rounded-lg ${errors.subject ? 'border-red-500' : 'border-gray-300'}`}
+                  placeholder="Brief summary of your issue"
+                />
+                {errors.subject && <p className="text-red-500 text-sm mt-1">{errors.subject}</p>}
               </div>
-            )}
-            
-            <div className="mb-4">
-              <label className="block text-gray-700 font-medium mb-2">
-                Subject <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                name="subject"
-                value={formData.subject}
-                onChange={handleChange}
-                className={`w-full p-3 border rounded-lg ${errors.subject ? 'border-red-500' : 'border-gray-300'}`}
-                placeholder="Brief summary of your issue"
-              />
-              {errors.subject && <p className="text-red-500 text-sm mt-1">{errors.subject}</p>}
-            </div>
-            
-            <div className="mb-4">
-              <label className="block text-gray-700 font-medium mb-2">
-                Category <span className="text-red-500">*</span>
-              </label>
-              <select
-                name="category"
-                value={formData.category}
-                onChange={handleChange}
-                className={`w-full p-3 border rounded-lg ${errors.category ? 'border-red-500' : 'border-gray-300'}`}
-              >
-                <option value="">Select a Category</option>
-                {categories.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
-              {errors.category && <p className="text-red-500 text-sm mt-1">{errors.category}</p>}
-            </div>
-            
-            <div className="mb-4">
-              <label className="block text-gray-700 font-medium mb-2">
-                Priority <span className="text-red-500">*</span>
-              </label>
-              <select
-                name="priority"
-                value={formData.priority}
-                onChange={handleChange}
-                className={`w-full p-3 border rounded-lg ${errors.priority ? 'border-red-500' : 'border-gray-300'}`}
-              >
-                {priorities.map((priority) => (
-                  <option key={priority} value={priority}>
-                    {priority}
-                  </option>
-                ))}
-              </select>
-              {errors.priority && <p className="text-red-500 text-sm mt-1">{errors.priority}</p>}
-            </div>
-            
-            <div className="mb-6">
-              <label className="block text-gray-700 font-medium mb-2">
-                Description <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                name="description"
-                value={formData.description}
-                onChange={handleChange}
-                rows="6"
-                className={`w-full p-3 border rounded-lg ${errors.description ? 'border-red-500' : 'border-gray-300'}`}
-                placeholder="Please provide detailed information about your issue..."
-              ></textarea>
-              {errors.description && <p className="text-red-500 text-sm mt-1">{errors.description}</p>}
-            </div>
-            
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => navigate('/customer')}
-                className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 mr-4 hover:bg-gray-50"
-                disabled={isSubmitting}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-6 py-3 bg-pink-500 text-white rounded-lg hover:bg-pink-600 disabled:opacity-60"
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? (
-                  <>
-                    <FaSpinner className="animate-spin inline mr-2" />
-                    Submitting...
-                  </>
-                ) : (
-                  'Submit Ticket'
-                )}
-              </button>
-            </div>
-          </form>
-        )}
+              <div className="mb-4">
+                <label className="block text-gray-700 font-medium mb-2">
+                  Category <span className="text-red-500">*</span>
+                </label>
+                <select
+                  name="category"
+                  value={formData.category}
+                  onChange={handleChange}
+                  className={`w-full p-3 border rounded-lg ${errors.category ? 'border-red-500' : 'border-gray-300'}`}
+                >
+                  <option value="">Select a Category</option>
+                  {categories.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+                {errors.category && <p className="text-red-500 text-sm mt-1">{errors.category}</p>}
+              </div>
+              <div className="mb-4">
+                <label className="block text-gray-700 font-medium mb-2">
+                  Priority <span className="text-red-500">*</span>
+                </label>
+                <select
+                  name="priority"
+                  value={formData.priority}
+                  onChange={handleChange}
+                  className={`w-full p-3 border rounded-lg ${errors.priority ? 'border-red-500' : 'border-gray-300'}`}
+                >
+                  {priorities.map((priority) => (
+                    <option key={priority} value={priority}>
+                      {priority}
+                    </option>
+                  ))}
+                </select>
+                {errors.priority && <p className="text-red-500 text-sm mt-1">{errors.priority}</p>}
+              </div>
+              <div className="mb-6">
+                <label className="block text-gray-700 font-medium mb-2">
+                  Description <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  name="description"
+                  value={formData.description}
+                  onChange={handleChange}
+                  rows="6"
+                  className={`w-full p-3 border rounded-lg ${errors.description ? 'border-red-500' : 'border-gray-300'}`}
+                  placeholder="Please provide detailed information about your issue..."
+                ></textarea>
+                {errors.description && <p className="text-red-500 text-sm mt-1">{errors.description}</p>}
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => navigate('/customer')}
+                  className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 mr-4 hover:bg-gray-50"
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-3 bg-pink-500 text-white rounded-lg hover:bg-pink-600 disabled:opacity-60"
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <FaSpinner className="animate-spin inline mr-2" />
+                      Submitting...
+                    </>
+                  ) : (
+                    'Submit Ticket'
+                  )}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
       </div>
+      {/* Sticky Footer */}
+      <footer className="bg-white border-t mt-8 py-8 w-full">
+        <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row justify-between items-center">
+          <div>
+            <h3 className="font-bold text-lg mb-1">YipHelp Support</h3>
+            <p className="text-gray-600">We're here to help you with your cuddly companions.</p>
+          </div>
+          <div className="flex flex-col md:flex-row gap-6 mt-4 md:mt-0">
+            <div>
+              <h4 className="font-semibold mb-1">Support</h4>
+              <ul>
+                <li><a href="#" className="text-gray-600 hover:text-pink-500">Help Center</a></li>
+                <li><a href="#" className="text-gray-600 hover:text-pink-500">Submit Ticket</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="font-semibold mb-1">Resources</h4>
+              <ul>
+                <li><a href="#" className="text-gray-600 hover:text-pink-500">Knowledge Base</a></li>
+                <li><a href="#" className="text-gray-600 hover:text-pink-500">FAQ</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="font-semibold mb-1">Connect</h4>
+              <ul>
+                <li><a href="#" className="text-gray-600 hover:text-pink-500">TikTok</a></li>
+                <li><a href="#" className="text-gray-600 hover:text-pink-500">Instagram</a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div className="text-center text-gray-400 text-xs mt-4">
+          © 2024 YipHelp. All rights reserved
+        </div>
+      </footer>
     </div>
   );
 };

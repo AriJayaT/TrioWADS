@@ -103,12 +103,12 @@ const ticketSchema = new mongoose.Schema({
   toJSON: { 
     virtuals: true,
     transform: function(doc, ret) {
-      // Create a copy of _id as id
+      // Create a copy of _id as id and keep _id as string
       if (ret._id) {
         ret.id = ret._id.toString();
+        ret._id = ret._id.toString();
       }
-      // Then remove _id and __v
-      delete ret._id;
+      // Remove __v only
       delete ret.__v;
       return ret;
     }
@@ -116,12 +116,12 @@ const ticketSchema = new mongoose.Schema({
   toObject: { 
     virtuals: true,
     transform: function(doc, ret) {
-      // Create a copy of _id as id
+      // Create a copy of _id as id and keep _id as string
       if (ret._id) {
         ret.id = ret._id.toString();
+        ret._id = ret._id.toString();
       }
-      // Then remove _id and __v
-      delete ret._id;
+      // Remove __v only
       delete ret.__v;
       return ret;
     }

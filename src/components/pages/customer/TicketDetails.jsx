@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { FaArrowLeft, FaSpinner } from 'react-icons/fa';
+import { FaArrowLeft, FaSpinner, FaPaperclip, FaTimes } from 'react-icons/fa';
 import ticketService from '../../../services/api/ticketService';
 import { useAuth } from '../../../context/AuthContext';
+import { useSocket } from '../../../context/SocketContext';
 import TicketRatingForm from '../../customer/TicketRatingForm';
 import TicketRatingDisplay from '../../customer/TicketRatingDisplay';
 
@@ -17,10 +18,9 @@ const TicketDetails = () => {
   const [error, setError] = useState(null);
   const [showRatingForm, setShowRatingForm] = useState(false);
   const [ticketRating, setTicketRating] = useState(null);
-
-  // Create a refresh counter to force refetching when needed
   const [refreshCounter, setRefreshCounter] = useState(0);
-  
+  const { socket, subscribeToEvent, unsubscribeFromEvent } = useSocket();
+
   // Function to explicitly refresh ticket data
   const refreshTicket = () => {
     console.log('Manually refreshing ticket');
@@ -112,10 +112,58 @@ const TicketDetails = () => {
       }, 10000); // Refresh every 10 seconds
     }
     
+    // Subscribe to socket events
+    const handleNewReply = (data) => {
+      console.log('Handling new reply:', data);
+      if (data.ticket._id === ticketId) {
+        setTicket(prevTicket => {
+          // Ensure we have the latest ticket data
+          const updatedTicket = {
+            ...prevTicket,
+            ...data.ticket,
+            // Make sure we're not losing any existing messages
+            messages: [
+              ...(prevTicket.messages || []),
+              {
+                ...data.reply,
+                sender: data.reply.sender || (data.reply.user?.role === 'customer' ? 'customer' : 'agent'),
+                senderName: data.reply.senderName || data.reply.user?.name
+              }
+            ]
+          };
+          console.log('Updated ticket with new reply:', updatedTicket);
+          return updatedTicket;
+        });
+      }
+    };
+
+    const handleTicketUpdate = (data) => {
+      console.log('Handling ticket update:', data);
+      if (data._id === ticketId) {
+        setTicket(prevTicket => {
+          const updatedTicket = {
+            ...prevTicket,
+            ...data,
+            // Preserve existing messages when updating ticket
+            messages: prevTicket.messages || []
+          };
+          console.log('Updated ticket with new data:', updatedTicket);
+          return updatedTicket;
+        });
+      }
+    };
+
+    // Subscribe to events
+    subscribeToEvent('new_reply', handleNewReply);
+    subscribeToEvent('ticket_updated', handleTicketUpdate);
+
+    // Cleanup subscriptions
     return () => {
       if (intervalId) clearInterval(intervalId);
+      unsubscribeFromEvent('new_reply', handleNewReply);
+      unsubscribeFromEvent('ticket_updated', handleTicketUpdate);
     };
-  }, [ticketId, refreshCounter]);
+  }, [ticketId, refreshCounter, subscribeToEvent, unsubscribeFromEvent]);
 
   const handleReply = async (e) => {
     e.preventDefault();

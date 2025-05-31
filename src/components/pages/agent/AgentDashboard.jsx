@@ -4,12 +4,15 @@ import { FaCheckCircle, FaRegClock, FaStar, FaTicketAlt, FaPlus } from 'react-ic
 import { Link, useNavigate } from 'react-router-dom';
 import logo from '/src/assets/logo.jpg';
 import { useAuth } from '../../../context/AuthContext';
+import { useSocket } from '../../../context/SocketContext';
 import ticketService from '../../../services/api/ticketService';
 import { getNotifications, markNotificationAsRead } from '../../../services/api/notificationService';
 import NotificationBell from '../../common/NotificationBell';
+import { useNotificationUpdates } from '../../../hooks/useNotificationUpdates';
 
 const AgentDashboard = () => {
   const navigate = useNavigate();
+  const { socket, subscribeToEvent, unsubscribeFromEvent } = useSocket();
   // State for adding a new task
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [newTask, setNewTask] = useState({ title: '', priority: 'Normal', dueDate: '' });
@@ -34,9 +37,88 @@ const AgentDashboard = () => {
   const [notifications, setNotifications] = useState([]);
   const [loadingNotifs, setLoadingNotifs] = useState(true);
   const unreadCount = notifications.filter(n => !n.read).length;
-  
+  const [tickets, setTickets] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('All Status');
+
   useEffect(() => {
     fetchDashboardData();
+    fetchNotifs();
+
+    // Subscribe to socket events
+    const handleTicketUpdate = (data) => {
+      console.log('Handling ticket update:', data);
+      // Update active tickets if the updated ticket is in the list
+      setActiveTickets(prevTickets => {
+        const updatedTickets = prevTickets.map(ticket => 
+          ticket.id === data._id ? {
+            ...ticket,
+            status: data.status === 'open' ? 'Awaiting your response' : 
+                   data.status === 'in-progress' ? 'In progress' : 'Pending'
+          } : ticket
+        );
+        return updatedTickets;
+      });
+      
+      // Refresh dashboard data to update metrics
+      fetchDashboardData();
+    };
+
+    const handleNewNotification = (data) => {
+      console.log('Handling new notification:', data);
+      fetchNotifs();
+    };
+
+    const handleTicketAssigned = (data) => {
+      console.log('Handling ticket assigned:', data);
+      // Update active tickets
+      setActiveTickets(prevTickets => {
+        const exists = prevTickets.some(ticket => ticket.id === data._id);
+        if (exists) {
+          return prevTickets.map(ticket => 
+            ticket.id === data._id ? {
+              ...ticket,
+              status: data.status === 'open' ? 'Awaiting your response' : 
+                     data.status === 'in-progress' ? 'In progress' : 'Pending'
+            } : ticket
+          );
+        }
+        return [{
+          id: data._id,
+          ticketNumber: data.ticketNumber,
+          subject: data.subject,
+          customer: data.user?.name || 'Customer',
+          status: data.status === 'open' ? 'Awaiting your response' : 
+                 data.status === 'in-progress' ? 'In progress' : 'Pending'
+        }, ...prevTickets];
+      });
+      
+      // Update all tickets list
+      setTickets(prevTickets => {
+        const exists = prevTickets.some(ticket => ticket._id === data._id);
+        if (exists) {
+          return prevTickets.map(ticket => 
+            ticket._id === data._id ? { ...ticket, ...data } : ticket
+          );
+        }
+        return [data, ...prevTickets];
+      });
+      
+      // Refresh dashboard data to update metrics
+      fetchDashboardData();
+    };
+
+    // Subscribe to events
+    subscribeToEvent('ticket_updated', handleTicketUpdate);
+    subscribeToEvent('new_notification', handleNewNotification);
+    subscribeToEvent('ticket_assigned', handleTicketAssigned);
+
+    // Cleanup subscriptions
+    return () => {
+      unsubscribeFromEvent('ticket_updated', handleTicketUpdate);
+      unsubscribeFromEvent('new_notification', handleNewNotification);
+      unsubscribeFromEvent('ticket_assigned', handleTicketAssigned);
+    };
   }, []);
   
   const fetchDashboardData = async () => {
@@ -255,20 +337,17 @@ const AgentDashboard = () => {
   };
 
   // Fetch notifications on mount
-  useEffect(() => {
-    const fetchNotifs = async () => {
-      try {
-        setLoadingNotifs(true);
-        const notifs = await getNotifications();
-        setNotifications(notifs);
-      } catch (err) {
-        setNotifications([]);
-      } finally {
-        setLoadingNotifs(false);
-      }
-    };
-    if (user && user.id) fetchNotifs();
-  }, [user]);
+  const fetchNotifs = async () => {
+    try {
+      setLoadingNotifs(true);
+      const notifs = await getNotifications();
+      setNotifications(notifs);
+    } catch (err) {
+      setNotifications([]);
+    } finally {
+      setLoadingNotifs(false);
+    }
+  };
 
   // Mark all as read when dropdown is opened
   const handleNotifDropdown = async () => {
@@ -290,6 +369,78 @@ const AgentDashboard = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Handle new notifications
+  const handleNewNotification = (notification) => {
+    console.log('New notification received:', notification);
+    setNotifications(prev => [notification, ...prev]);
+  };
+
+  // Use the notification updates hook
+  useNotificationUpdates(handleNewNotification);
+
+  useEffect(() => {
+    const fetchTickets = async () => {
+      try {
+        setLoading(true);
+        const response = await ticketService.getTickets();
+        setTickets(response.tickets || []);
+      } catch (err) {
+        console.error('Error fetching tickets:', err);
+        setError('Failed to load tickets. Please try again later.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTickets();
+
+    // Subscribe to socket events
+    const handleTicketUpdate = (data) => {
+      console.log('Handling ticket update:', data);
+      setTickets(prevTickets => {
+        const updatedTickets = prevTickets.map(ticket => 
+          ticket._id === data._id ? { ...ticket, ...data } : ticket
+        );
+        return updatedTickets;
+      });
+    };
+
+    const handleNewReply = (data) => {
+      console.log('Handling new reply:', data);
+      setTickets(prevTickets => {
+        const updatedTickets = prevTickets.map(ticket => 
+          ticket._id === data.ticket._id ? { ...ticket, ...data.ticket } : ticket
+        );
+        return updatedTickets;
+      });
+    };
+
+    const handleTicketAssigned = (data) => {
+      console.log('Handling ticket assigned:', data);
+      setTickets(prevTickets => {
+        const exists = prevTickets.some(ticket => ticket._id === data._id);
+        if (exists) {
+          return prevTickets.map(ticket => 
+            ticket._id === data._id ? { ...ticket, ...data } : ticket
+          );
+        }
+        return [data, ...prevTickets];
+      });
+    };
+
+    // Subscribe to events
+    subscribeToEvent('ticket_updated', handleTicketUpdate);
+    subscribeToEvent('new_reply', handleNewReply);
+    subscribeToEvent('ticket_assigned', handleTicketAssigned);
+
+    // Cleanup subscriptions
+    return () => {
+      unsubscribeFromEvent('ticket_updated', handleTicketUpdate);
+      unsubscribeFromEvent('new_reply', handleNewReply);
+      unsubscribeFromEvent('ticket_assigned', handleTicketAssigned);
+    };
+  }, [subscribeToEvent, unsubscribeFromEvent]);
 
   if (loading) {
     return (
@@ -393,9 +544,14 @@ const AgentDashboard = () => {
         <div style={{ height: '56px' }} />
         {/* Page Header */}
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold">Agent Dashboard</h1>
-          <div className="bg-gray-200 text-gray-700 px-4 py-1 rounded-full text-sm">
-            Today
+          <h1 className="text-2xl font-bold text-gray-900">Agent Dashboard</h1>
+          <div className="flex items-center gap-4">
+            <NotificationBell />
+            <Link to="/agent/tickets">
+              <button className="bg-pink-500 hover:bg-pink-600 text-white px-4 py-2 rounded-lg text-sm">
+                View All Tickets
+              </button>
+            </Link>
           </div>
         </div>
 

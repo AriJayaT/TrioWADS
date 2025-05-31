@@ -25,6 +25,7 @@ import VerifyEmail from './components/pages/login&signup/VerifyEmail';
 import ForgotPassword from './components/pages/login&signup/ForgotPassword';
 import ResetPassword from './components/pages/login&signup/ResetPassword';
 import { GoogleOAuthProvider } from '@react-oauth/google';
+import ChatWidget from './components/common/ChatWidget';
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -134,6 +135,8 @@ function App() {
         <SocketProvider>
           <BrowserRouter>
             <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
+              {/* Render ChatWidget globally for debugging */}
+              <ChatWidget />
               <Routes>
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/select-version" element={<VersionSelectPage />} />

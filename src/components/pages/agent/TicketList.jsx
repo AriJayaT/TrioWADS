@@ -7,6 +7,7 @@ import ticketService from '../../../services/api/ticketService';
 import apiClient from '../../../services/api/apiClient';
 import NotificationBell from '../../common/NotificationBell';
 import { useTicketUpdates } from '../../../hooks/useTicketUpdates';
+import { useSocket } from '../../../context/SocketContext';
 
 const TicketList = () => {
   const navigate = useNavigate();
@@ -28,6 +29,7 @@ const TicketList = () => {
   const [removingTicket, setRemovingTicket] = useState(null);
 
   const { user, logout } = useAuth();
+  const { subscribeToEvent, unsubscribeFromEvent } = useSocket();
   
   // Initialize agentType from user object immediately
   const [agentType, setAgentType] = useState(() => {
@@ -80,6 +82,54 @@ const TicketList = () => {
 
     initializeData();
   }, [user]);
+
+  useEffect(() => {
+    // Handler for ticket_assigned event
+    const handleTicketAssigned = (assignedTicket) => {
+      // Only update if the ticket is assigned to this agent
+      if (
+        assignedTicket.assignedTo &&
+        (assignedTicket.assignedTo._id === user._id || assignedTicket.assignedTo === user._id)
+      ) {
+        setUnassignedTickets(prev => prev.filter(t => (t._id !== assignedTicket._id && t.id !== assignedTicket._id)));
+        setTickets(prev => {
+          // Avoid duplicates
+          const exists = prev.some(t => (t._id === assignedTicket._id || t.id === assignedTicket._id));
+          if (!exists) {
+            return [assignedTicket, ...prev];
+          }
+          return prev;
+        });
+        setAssignedCount(prev => prev + 1);
+      }
+    };
+
+    subscribeToEvent('ticket_assigned', handleTicketAssigned);
+    return () => {
+      unsubscribeFromEvent('ticket_assigned', handleTicketAssigned);
+    };
+  }, [user, subscribeToEvent, unsubscribeFromEvent]);
+
+  useEffect(() => {
+    const handleNewTicket = (newTicket) => {
+      // Only add to unassigned if it matches agent type
+      if (
+        !newTicket.assignedTo &&
+        (agentType === 'Senior' ? newTicket.priority === 'high' : (newTicket.priority === 'low' || newTicket.priority === 'medium'))
+      ) {
+        console.log('handleNewTicket called:', ticket);
+        setUnassignedTickets((prev) => {
+          const exists = prev.some(t => (t._id === newTicket._id || t.id === newTicket._id));
+          if (!exists) return [newTicket, ...prev];
+          return prev;
+        });
+      }
+    };
+    subscribeToEvent('new_ticket', handleNewTicket);
+    return () => {
+      unsubscribeFromEvent('new_ticket', handleNewTicket);
+    };
+  }, [agentType, subscribeToEvent, unsubscribeFromEvent]);
 
   // Functions to fetch data
   const fetchAssignedCount = async () => {
@@ -222,7 +272,7 @@ const TicketList = () => {
       if (!response.success) {
         throw new Error(response.error || 'Failed to assign ticket');
       }
-      
+
       // Update the customer ticket count
       const userId = ticket.user?._id || ticket.user;
       setCustomerTicketCounts(prev => ({
@@ -230,9 +280,12 @@ const TicketList = () => {
         [userId]: (prev[userId] || 0) + 1
       }));
       
-      // Refresh the ticket lists
-      await fetchTickets(agentType);
-      await fetchAssignedCount();
+      // Update the ticket lists immediately
+      setTickets(prev => [response.ticket, ...prev]);
+      setUnassignedTickets(prev => prev.filter(t => t._id !== ticketId));
+      
+      // Update assigned count
+      setAssignedCount(prev => prev + 1);
       
       // Show success message
       alert(`Ticket ${ticketId} has been assigned to you and marked as in-progress.`);
@@ -564,51 +617,61 @@ const TicketList = () => {
     return result.trim();
   };
 
-  // Real-time ticket updates
-  useTicketUpdates(
-    (newTicket) => {
-      // Only add to unassignedTickets if not assigned and matches agent type
-      if (!newTicket.assignedTo) {
-        setUnassignedTickets(prev => {
-          // Avoid duplicates
-          if (prev.some(t => t._id === newTicket._id)) return prev;
-          // Filter by agent type
-          if (
-            (agentType === 'Senior' && newTicket.priority === 'high') ||
-            (agentType !== 'Senior' && (newTicket.priority === 'low' || newTicket.priority === 'medium'))
-          ) {
-            return [newTicket, ...prev];
-          }
-          return prev;
-        });
-      }
-    },
-    (updatedTicket) => {
-      // Update in assigned tickets
-      setTickets(prev => prev.map(t => t._id === updatedTicket._id ? updatedTicket : t));
-      // Update in unassigned tickets
-      setUnassignedTickets(prev => {
-        // If now assigned, remove from unassigned
-        if (updatedTicket.assignedTo) {
-          return prev.filter(t => t._id !== updatedTicket._id);
-        }
-        // If still unassigned and matches agent type, update or add
-        if (
-          (agentType === 'Senior' && updatedTicket.priority === 'high') ||
-          (agentType !== 'Senior' && (updatedTicket.priority === 'low' || updatedTicket.priority === 'medium'))
-        ) {
-          const exists = prev.some(t => t._id === updatedTicket._id);
-          if (exists) {
-            return prev.map(t => t._id === updatedTicket._id ? updatedTicket : t);
-          } else {
-            return [updatedTicket, ...prev];
-          }
-        }
-        // Otherwise, remove from unassigned
-        return prev.filter(t => t._id !== updatedTicket._id);
+  // Add handlers for ticket updates
+  const handleNewTicket = (newTicket) => {
+    console.log('New ticket received:', newTicket);
+    const ticketId = newTicket._id || newTicket.id;
+    // Only add to unassigned if it matches agent type
+    if (!newTicket.assignedTo && (agentType === 'Senior' ? newTicket.priority === 'high' : (newTicket.priority === 'low' || newTicket.priority === 'medium'))) {
+      setUnassignedTickets((prev) => {
+        const exists = prev.some(t => (t._id === ticketId || t.id === ticketId));
+        if (!exists) return [newTicket, ...prev];
+        return prev;
       });
     }
-  );
+  };
+
+  const handleTicketUpdate = (updatedTicket) => {
+    console.log('Ticket update received:', updatedTicket);
+    const ticketId = updatedTicket._id || updatedTicket.id;
+    
+    // Update assigned tickets if this agent is assigned
+    setTickets((prev) => {
+      const exists = prev.some(t => (t._id === ticketId || t.id === ticketId));
+      if (exists) {
+        return prev.map(t => (t._id === ticketId || t.id === ticketId) ? updatedTicket : t);
+      } else if (updatedTicket.assignedTo && (updatedTicket.assignedTo._id === user._id || updatedTicket.assignedTo === user._id)) {
+        // If the ticket is newly assigned to this agent, add it
+        return [updatedTicket, ...prev];
+      }
+      return prev;
+    });
+
+    // Update in unassigned tickets
+    setUnassignedTickets((prev) => {
+      // If now assigned, remove from unassigned
+      if (updatedTicket.assignedTo) {
+        return prev.filter(t => (t._id !== ticketId && t.id !== ticketId));
+      }
+      // If still unassigned and matches agent type, update or add
+      if (
+        (agentType === 'Senior' && updatedTicket.priority === 'high') ||
+        (agentType !== 'Senior' && (updatedTicket.priority === 'low' || updatedTicket.priority === 'medium'))
+      ) {
+        const exists = prev.some(t => (t._id === ticketId || t.id === ticketId));
+        if (exists) {
+          return prev.map(t => (t._id === ticketId || t.id === ticketId) ? updatedTicket : t);
+        } else {
+          return [updatedTicket, ...prev];
+        }
+      }
+      // Otherwise, remove from unassigned
+      return prev.filter(t => (t._id !== ticketId && t.id !== ticketId));
+    });
+  };
+
+  // Use the useTicketUpdates hook
+  useTicketUpdates(handleNewTicket, handleTicketUpdate);
 
   if (loading) {
     return (
@@ -741,13 +804,14 @@ const TicketList = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {unassignedTickets.map((ticket) => {
+                  {(() => { console.log('unassignedTickets', unassignedTickets); return null; })()}
+                  {unassignedTickets.map((ticket, index) => {
                     const canAssign = canAssignTicket(ticket);
                     const userId = ticket.user?._id || ticket.user;
                     const customerCount = customerTicketCounts[userId] || 0;
                     
                     return (
-                      <tr key={ticket._id} className="hover:bg-gray-50">
+                      <tr key={ticket._id || `unassigned-${index}`} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-sm font-medium text-gray-900">{ticket._id}</td>
                         <td className="px-4 py-3 text-sm">{ticket.subject}</td>
                         <td className="px-4 py-3 text-sm">
@@ -911,8 +975,9 @@ const TicketList = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredTickets.map((ticket) => (
-                    <tr key={ticket._id} className="hover:bg-gray-50">
+                  {(() => { console.log('filteredTickets', filteredTickets); return null; })()}
+                  {filteredTickets.map((ticket, index) => (
+                    <tr key={ticket._id || `assigned-${index}`} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         {ticket._id}
                       </td>
@@ -1100,6 +1165,7 @@ const TicketList = () => {
               <div className="mb-6">
                 <h3 className="font-medium mb-2">Conversation History</h3>
                 <div className="bg-gray-50 p-3 rounded space-y-3 max-h-96 overflow-y-auto">
+                  {(() => { console.log('messages', selectedTicket?.messages); return null; })()}
                   {selectedTicket.messages && selectedTicket.messages.length > 0 ? (
                     selectedTicket.messages.map((message, index) => (
                       <div 

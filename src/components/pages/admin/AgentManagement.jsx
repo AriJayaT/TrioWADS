@@ -1,8 +1,10 @@
 // src/pages/admin/AgentManagement.jsx (Galih Added This)
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import DashboardLayout from '/src/components/layout/DashboardLayout'; // Use the shared dashboard layout
 import { FaUserTag, FaCheck, FaTimes, FaSpinner, FaPencilAlt, FaAngleDown } from 'react-icons/fa';
 import apiClient from '../../../services/api/apiClient';
+import { useSocket } from '../../../context/SocketContext';
+import NotificationBell from '../../common/NotificationBell';
 
 // Add global click handler component 
 const PreventDefaultClick = ({ children }) => {
@@ -37,10 +39,13 @@ const AgentManagement = () => {
   const [ticketsLoading, setTicketsLoading] = useState(true);
   const [assigning, setAssigning] = useState(null);
   const [openDropdownId, setOpenDropdownId] = useState(null);
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const { socket, isConnected, subscribeToEvent, unsubscribeFromEvent } = useSocket();
+  const handlersRef = useRef({});
 
   // Use useCallback to ensure function stability
   const toggleDropdown = useCallback((event, ticketId) => {
-    // Prevent default action to avoid page refresh
     if (event) {
       event.preventDefault();
       event.stopPropagation();
@@ -58,7 +63,7 @@ const AgentManagement = () => {
       const response = await apiClient.get('/users/agents');
       setAgents(response.data.agents || []);
     } catch (error) {
-      alert('Error fetching agents. Please try refreshing the page.');
+      console.error('[AgentManagement] Error fetching agents:', error);
     } finally {
       setLoading(false);
     }
@@ -73,7 +78,7 @@ const AgentManagement = () => {
       const response = await apiClient.get('/tickets?unassigned=true');
       setUnassignedTickets(response.data.tickets || []);
     } catch (error) {
-      alert('Error fetching unassigned tickets. Please try refreshing the page.');
+      console.error('[AgentManagement] Error fetching unassigned tickets:', error);
     } finally {
       if (showLoading) {
         setTicketsLoading(false);
@@ -81,14 +86,98 @@ const AgentManagement = () => {
     }
   }, []);
 
+  // Add socket event handlers
+  useEffect(() => {
+    if (!socket || !isConnected) {
+      console.log('[AgentManagement] Socket not connected, skipping event handlers');
+      return;
+    }
+
+    console.log('[AgentManagement] Setting up socket event handlers');
+
+    // Clean up any existing handlers
+    Object.entries(handlersRef.current).forEach(([event, handler]) => {
+      unsubscribeFromEvent(event, handler);
+    });
+    handlersRef.current = {};
+
+    const handleNewTicket = (ticket) => {
+      console.log('[AgentManagement] New ticket received:', ticket);
+      if (!ticket.assignedTo) {
+        setUnassignedTickets(prev => {
+          const exists = prev.some(t => t._id === ticket._id);
+          if (!exists) {
+            return [ticket, ...prev];
+          }
+          return prev;
+        });
+      }
+    };
+
+    const handleTicketUpdate = (ticket) => {
+      console.log('[AgentManagement] Ticket update received:', ticket);
+      setUnassignedTickets(prev => {
+        // If ticket is now assigned, remove it from unassigned
+        if (ticket.assignedTo) {
+          return prev.filter(t => t._id !== ticket._id);
+        }
+        // If ticket is unassigned, add or update it
+        const exists = prev.some(t => t._id === ticket._id);
+        if (exists) {
+          return prev.map(t => t._id === ticket._id ? ticket : t);
+        } else {
+          return [ticket, ...prev];
+        }
+      });
+    };
+
+    const handleTicketAssigned = (ticket) => {
+      console.log('[AgentManagement] Ticket assigned:', ticket);
+      setUnassignedTickets(prev => prev.filter(t => t._id !== ticket._id));
+    };
+
+    // Store handlers in ref for cleanup
+    handlersRef.current = {
+      new_ticket: handleNewTicket,
+      ticket_updated: handleTicketUpdate,
+      ticket_assigned: handleTicketAssigned
+    };
+
+    // Subscribe to events
+    Object.entries(handlersRef.current).forEach(([event, handler]) => {
+      subscribeToEvent(event, handler);
+    });
+
+    // Initial data fetch
+    fetchAgents();
+    fetchUnassignedTickets();
+
+    // Cleanup subscriptions
+    return () => {
+      console.log('[AgentManagement] Cleaning up socket event subscriptions');
+      Object.entries(handlersRef.current).forEach(([event, handler]) => {
+        unsubscribeFromEvent(event, handler);
+      });
+      handlersRef.current = {};
+    };
+  }, [socket, isConnected, subscribeToEvent, unsubscribeFromEvent, fetchAgents, fetchUnassignedTickets]);
+
+  // Debug logging for socket connection
+  useEffect(() => {
+    console.log('[AgentManagement] Socket connection status:', isConnected);
+  }, [isConnected]);
+
+  // Debug logging for unassigned tickets updates
+  useEffect(() => {
+    console.log('[AgentManagement] Unassigned tickets updated:', unassignedTickets);
+  }, [unassignedTickets]);
+
   // Update handleAssignTicket with useCallback
   const handleAssignTicket = useCallback(async (event, ticket, agentId) => {
-    // Prevent any default actions
     if (event) {
       event.preventDefault();
       event.stopPropagation();
       
-      // Extra measure to stop propagation
       if (event.nativeEvent) {
         event.nativeEvent.stopImmediatePropagation();
       }
@@ -135,11 +224,8 @@ const AgentManagement = () => {
       // Then refresh the list silently in the background
       fetchUnassignedTickets(false);
     } catch (error) {
-      if (error.response?.data?.error) {
-        alert(error.response.data.error);
-      } else {
-        alert('Failed to assign ticket');
-      }
+      console.error('[AgentManagement] Error assigning ticket:', error);
+      alert('Failed to assign ticket. Please try again.');
     } finally {
       setAssigning(null);
     }
@@ -332,9 +418,53 @@ const AgentManagement = () => {
     }
   };
 
+  // Add notification handlers
+  useEffect(() => {
+    console.log('[AgentManagement] Setting up notification handlers');
+
+    const handleNewNotification = (notification) => {
+      console.log('[AgentManagement] New notification received:', notification);
+      setNotifications(prev => {
+        const exists = prev.some(n => n._id === notification._id);
+        if (exists) {
+          return prev.map(n => n._id === notification._id ? notification : n);
+        }
+        return [notification, ...prev];
+      });
+    };
+
+    const handleNotificationRead = (notificationId) => {
+      console.log('[AgentManagement] Notification read:', notificationId);
+      setNotifications(prev => 
+        prev.map(n => n._id === notificationId ? { ...n, read: true } : n)
+      );
+    };
+
+    // Subscribe to notification events
+    subscribeToEvent('new_notification', handleNewNotification);
+    subscribeToEvent('notification_read', handleNotificationRead);
+
+    // Cleanup subscriptions
+    return () => {
+      console.log('[AgentManagement] Cleaning up notification subscriptions');
+      unsubscribeFromEvent('new_notification', handleNewNotification);
+      unsubscribeFromEvent('notification_read', handleNotificationRead);
+    };
+  }, [subscribeToEvent, unsubscribeFromEvent]);
+
+  // Debug logging for notifications
+  useEffect(() => {
+    console.log('[AgentManagement] Notifications updated:', notifications);
+  }, [notifications]);
+
   return (
     <PreventDefaultClick>
       <DashboardLayout title="Agents">
+        {/* Add NotificationBell component */}
+        <div className="absolute top-4 right-4">
+          <NotificationBell />
+        </div>
+
         {/* Add an onSubmit handler to prevent form submission */}
         <form onSubmit={(e) => e.preventDefault()} style={{ width: '100%' }}>
           {/* Page Title */}

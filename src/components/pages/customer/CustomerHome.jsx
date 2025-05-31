@@ -3,12 +3,14 @@ import { Link } from 'react-router-dom';
 import { FaTicketAlt, FaClock, FaCheckCircle } from 'react-icons/fa';
 import ticketService from '../../../services/api/ticketService';
 import { useAuth } from '../../../context/AuthContext';
+import { useSocket } from '../../../context/SocketContext';
 
 const CustomerHome = () => {
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const { user } = useAuth();
+  const { socket, subscribeToEvent, unsubscribeFromEvent } = useSocket();
 
   useEffect(() => {
     const fetchTickets = async () => {
@@ -25,7 +27,38 @@ const CustomerHome = () => {
     };
 
     fetchTickets();
-  }, []);
+
+    // Subscribe to socket events
+    const handleTicketUpdate = (data) => {
+      console.log('Handling ticket update:', data);
+      setTickets(prevTickets => {
+        const updatedTickets = prevTickets.map(ticket => 
+          ticket._id === data._id ? { ...ticket, ...data } : ticket
+        );
+        return updatedTickets;
+      });
+    };
+
+    const handleNewReply = (data) => {
+      console.log('Handling new reply:', data);
+      setTickets(prevTickets => {
+        const updatedTickets = prevTickets.map(ticket => 
+          ticket._id === data.ticket._id ? { ...ticket, ...data.ticket } : ticket
+        );
+        return updatedTickets;
+      });
+    };
+
+    // Subscribe to events
+    subscribeToEvent('ticket_updated', handleTicketUpdate);
+    subscribeToEvent('new_reply', handleNewReply);
+
+    // Cleanup subscriptions
+    return () => {
+      unsubscribeFromEvent('ticket_updated', handleTicketUpdate);
+      unsubscribeFromEvent('new_reply', handleNewReply);
+    };
+  }, [subscribeToEvent, unsubscribeFromEvent]);
 
   // Calculate ticket metrics
   const totalTickets = tickets.length;

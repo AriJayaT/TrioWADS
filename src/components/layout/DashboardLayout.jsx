@@ -18,7 +18,7 @@ const DashboardLayout = ({ children, title = "Dashboard" }) => {
       <AdminNavbar activeItem={title} />
       <div style={{ height: '56px' }} />
       <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6">
-        <div className="max-w-screen-xl mx-auto">
+        <div className="max-w-screen-xl mx-auto top">
           {children}
         </div>
       </main>
