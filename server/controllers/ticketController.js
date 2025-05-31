@@ -50,7 +50,9 @@ export const getTickets = async (req, res) => {
     
     const total = await Ticket.countDocuments(filter);
 
-    res.status(200).json({
+    
+
+res.status(200).json({
       success: true,
       count: tickets.length,
       total,
@@ -269,8 +271,11 @@ export const updateTicket = async (req, res) => {
         }
       } else if (req.body.status === 'waiting-for-agent') {
         // If customer is continuing conversation after resolution attempt
-        if (ticket.status === 'resolved') {
+        if (ticket.status === 'resolved' || ticket.status === 'closed') {
           console.log(`Ticket ${ticket._id} was reopened by customer ${req.user.id}`);
+          ticket.wasReopened = true;
+          ticket.reopenCount = (ticket.reopenCount || 0) + 1;
+          ticket.previousStatus = ticket.status;
         }
         ticket.status = 'waiting-for-agent';
       }
@@ -280,6 +285,15 @@ export const updateTicket = async (req, res) => {
         // Log all status changes clearly
         if (status !== ticket.status) {
           console.log(`Ticket status change: ${ticket._id} from "${ticket.status}" to "${status}" by agent ${req.user.id} (${req.user.name || 'Unknown'})`);
+          
+          // Track reopen when changing from resolved/closed to any active status
+          if (['resolved', 'closed'].includes(ticket.status) && 
+              ['open', 'in-progress', 'waiting-for-agent', 'waiting-for-customer'].includes(status)) {
+            console.log(`Ticket ${ticket._id} was reopened`);
+            ticket.wasReopened = true;
+            ticket.reopenCount = (ticket.reopenCount || 0) + 1;
+            ticket.previousStatus = ticket.status;
+          }
           
           // Special log for resolution
           if (status === 'resolved') {
@@ -443,41 +457,108 @@ export const getTicketStats = async (req, res) => {
       return res.status(403).json({ error: 'Not authorized' });
     }
 
+    console.log('Getting stats for user:', req.user);
+
+    // Build base filter
+    const baseFilter = { isRemoved: { $ne: true } };
+    
+    // If user is an agent, only show their stats
+    if (req.user.role === 'agent') {
+      baseFilter.assignedTo = new mongoose.Types.ObjectId(req.user._id);
+    }
+
+    console.log('Using filter:', baseFilter);
+
     // Overall counts
-    const total = await Ticket.countDocuments();
-    const open = await Ticket.countDocuments({ status: 'open' });
-    const inProgress = await Ticket.countDocuments({ status: 'in-progress' });
-    const waitingForCustomer = await Ticket.countDocuments({ status: 'waiting-for-customer' });
-    const resolved = await Ticket.countDocuments({ status: 'resolved' });
-    const closed = await Ticket.countDocuments({ status: 'closed' });
+    const total = await Ticket.countDocuments(baseFilter);
+    const open = await Ticket.countDocuments({ ...baseFilter, status: 'open' });
+    const inProgress = await Ticket.countDocuments({ ...baseFilter, status: 'in-progress' });
+    const waitingForCustomer = await Ticket.countDocuments({ ...baseFilter, status: 'waiting-for-customer' });
+    const resolved = await Ticket.countDocuments({ ...baseFilter, status: 'resolved' });
+    const closed = await Ticket.countDocuments({ ...baseFilter, status: 'closed' });
 
-    // Priority counts
-    const highPriority = await Ticket.countDocuments({ priority: 'high' });
-    const mediumPriority = await Ticket.countDocuments({ priority: 'medium' });
-    const lowPriority = await Ticket.countDocuments({ priority: 'low' });
+    console.log('Ticket counts:', { total, open, inProgress, waitingForCustomer, resolved, closed });
 
-    // Category breakdown
-    const categoryBreakdown = await Ticket.aggregate([
-      { $group: { _id: '$category', count: { $sum: 1 } } },
-      { $sort: { count: -1 } }
-    ]);
+    // Get all assigned tickets for this agent/admin
+    const allAssignedTickets = await Ticket.find(baseFilter);
+    console.log('Found assigned tickets:', allAssignedTickets.length);
 
-    // Recent activity
-    const recentTickets = await Ticket.find()
-      .populate('user', 'name')
-      .sort({ lastUpdated: -1 })
-      .limit(5);
+    // Get all replies for these tickets
+    const allReplies = await TicketReply.find({
+      ticket: { $in: allAssignedTickets.map(t => t._id) }
+    }).sort({ createdAt: 1 });
+    console.log('Found replies:', allReplies.length);
 
-    res.status(200).json({
+    // Calculate avg response time (time to first agent reply)
+    let totalResponseTime = 0;
+    let countResponded = 0;
+    for (const ticket of allAssignedTickets) {
+      const firstReply = allReplies.find(r => 
+        r.ticket.toString() === ticket._id.toString() && 
+        r.user.toString() === req.user._id.toString()
+      );
+      if (firstReply) {
+        const responseTimeMs = new Date(firstReply.createdAt) - new Date(ticket.createdAt);
+        if (responseTimeMs > 0) {
+          totalResponseTime += responseTimeMs;
+          countResponded++;
+        }
+      }
+    }
+    const avgResponseTimeMinutes = countResponded > 0
+      ? Math.round(totalResponseTime / countResponded / 60000)
+      : 0;
+
+    console.log('Response time calculation:', {
+      totalResponseTime,
+      countResponded,
+      avgResponseTimeMinutes
+    });
+
+    // Calculate resolution rate
+    const resolvedTicketCount = await Ticket.countDocuments({ 
+      ...baseFilter,
+      status: { $in: ['resolved', 'closed'] }
+    });
+    const resolutionRate = total > 0
+      ? Math.round((resolvedTicketCount / total) * 100)
+      : 0;
+
+    console.log('Resolution rate calculation:', {
+      resolvedTicketCount,
+      total,
+      resolutionRate
+    });
+
+    // Average CSAT score
+    const ratings = await Rating.find({
+      ticket: { $in: allAssignedTickets.map(t => t._id) }
+    });
+    const csatScore = ratings.length > 0
+      ? (ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length).toFixed(1)
+      : '0.0';
+
+    console.log('CSAT calculation:', {
+      ratingsCount: ratings.length,
+      csatScore
+    });
+
+    const response = {
       success: true,
       stats: {
         total,
         statusCounts: { open, inProgress, waitingForCustomer, resolved, closed },
-        priorityCounts: { high: highPriority, medium: mediumPriority, low: lowPriority },
-        categoryBreakdown,
-        recentActivity: recentTickets
+        metrics: {
+          avgResponseTime: avgResponseTimeMinutes,
+          resolutionRate,
+          csatScore,
+          ticketsResolved: resolvedTicketCount
+        }
       }
-    });
+    };
+
+    console.log('Sending response:', response);
+    res.status(200).json(response);
   } catch (error) {
     console.error('Get ticket stats error:', error);
     res.status(500).json({ error: 'Server error' });
@@ -500,7 +581,7 @@ export const fixTicketAssignments = async (req, res) => {
     const tickets = await Ticket.find({});
     let fixedCount = 0;
     
-    for (const ticket of tickets) {
+    for (const ticket of allAssignedTickets) {
       // Check if assignedTo exists but is invalid
       if (ticket.assignedTo !== undefined && 
           ticket.assignedTo !== null && 

@@ -8,6 +8,28 @@ const AgentRanking = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const convertResolutionTimeToMinutes = (timeStr) => {
+    if (!timeStr || timeStr === 'N/A') return Number.MAX_SAFE_INTEGER;
+    const [hours, minutes] = timeStr.split('h ').map(part => parseInt(part));
+    const totalMinutes = (hours * 60) + (parseInt(minutes) || 0);
+    // If total time is 0, treat it as no resolution time
+    return totalMinutes === 0 ? Number.MAX_SAFE_INTEGER : totalMinutes;
+  };
+
+  const fetchAgentData = async (agent) => {
+    try {
+      const ratingsRes = await axios.get(`http://localhost:5000/api/tickets/agent/${agent.id}/ratings`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+      });
+      return ratingsRes.data?.data?.averageRating || 0;
+    } catch (err) {
+      console.error(`Failed to fetch ratings for agent ${agent.id}:`, err);
+      return 0;
+    }
+  };
+
   const fetchAgents = async () => {
     try {
       const res = await axios.get('http://localhost:5000/api/users/agents', {
@@ -16,23 +38,41 @@ const AgentRanking = () => {
         },
       });
 
-      console.log('Response from /api/users/agents:', res.data); // Debug response
+      // Fetch ratings for each agent
+      const agentsWithRatings = await Promise.all((res.data?.agents || []).map(async (agent) => {
+        const rating = await fetchAgentData(agent);
+        
+        // Calculate trend based on reopen rate
+        const reopenRate = parseFloat(agent.stats?.reopenRate?.replace('%', '') || 0);
+        const trend = reopenRate <= 10 ? 'up' : 'down'; // Consider trend up if reopen rate is 10% or less
 
-      const processed = (res.data?.agents || []).map(agent => ({
-        name: agent.name,
-        role: agent.agentType || 'Support Agent',
-        initials: agent.name?.split(' ').map(n => n[0]).join('') || '??',
-        tickets: agent.assignedTickets?.length || 0,
-        avgResolution: 'N/A',
-        responseTime: 7,
-        rating: 4.5,
-        sla: parseInt(agent.stats?.resolution?.replace('%', '') || '0'),
-        trend: 'up',
+        // Get the resolution time in minutes
+        const resolutionTimeStr = agent.stats?.avgResolutionTime || '0h 0m';
+        const responseTime = convertResolutionTimeToMinutes(resolutionTimeStr);
+
+        // Count only resolved/closed tickets
+        const resolvedTickets = (agent.assignedTickets || []).filter(
+          ticket => ticket.status === 'resolved' || ticket.status === 'closed'
+        ).length;
+
+        return {
+          id: agent.id,
+          name: agent.name,
+          role: agent.agentType || 'Support Agent',
+          initials: agent.name?.split(' ').map(n => n[0]).join('') || '??',
+          tickets: resolvedTickets,
+          avgResolution: resolutionTimeStr,
+          responseTime,
+          rating: parseFloat(rating).toFixed(1),
+          sla: parseInt(agent.stats?.resolution?.replace('%', '') || '0'),
+          fcr: parseInt(agent.stats?.firstContactResolution?.replace('%', '') || '0'),
+          trend,
+        };
       }));
 
-      setAgents(processed);
+      setAgents(agentsWithRatings);
     } catch (err) {
-      console.error('Fetch failed:', err.response?.status, err.response?.data || err.message); // For Better error logging
+      console.error('Fetch failed:', err.response?.status, err.response?.data || err.message);
       setError('Failed to load agent data');
     } finally {
       setLoading(false);
@@ -44,8 +84,23 @@ const AgentRanking = () => {
   }, []);
 
   const sortedAgents = [...agents].sort((a, b) => {
-    if (sortKey === 'responseTime') return a[sortKey] - b[sortKey];
-    return b[sortKey] - a[sortKey];
+    switch (sortKey) {
+      case 'responseTime':
+        // For response time, we want to show actual times first, then "no time" entries
+        if (a[sortKey] === Number.MAX_SAFE_INTEGER && b[sortKey] === Number.MAX_SAFE_INTEGER) {
+          // If both have no time, sort by number of tickets instead
+          return b.tickets - a.tickets;
+        }
+        return a[sortKey] - b[sortKey];
+      case 'rating':
+        return b[sortKey] - a[sortKey];
+      case 'sla':
+        return b[sortKey] - a[sortKey];
+      case 'fcr':
+        return b[sortKey] - a[sortKey];
+      default: // tickets
+        return b[sortKey] - a[sortKey];
+    }
   });
 
   if (loading) return <p>Loading...</p>;
@@ -60,17 +115,18 @@ const AgentRanking = () => {
           value={sortKey}
           onChange={(e) => setSortKey(e.target.value)}
         >
-          <option value="tickets">Tickets</option>
+          <option value="tickets">Resolved Tickets</option>
           <option value="rating">Satisfaction Level</option>
           <option value="responseTime">Response Time</option>
           <option value="sla">SLA</option>
+          <option value="fcr">First Contact Resolution</option>
         </select>
       </div>
 
       <div className="space-y-4">
         {sortedAgents.map((agent, idx) => (
           <div
-            key={idx}
+            key={agent.id}
             className="flex items-center justify-between p-4 rounded-xl border border-pink-100"
           >
             <div className="flex items-center gap-4">
@@ -85,7 +141,7 @@ const AgentRanking = () => {
 
             <div className="flex items-center gap-6 text-sm text-gray-700">
               <div className="text-right">
-                <div className="font-medium">{agent.tickets} tickets</div>
+                <div className="font-medium">{agent.tickets} resolved</div>
                 <div className="text-xs text-gray-400">{agent.avgResolution} avg</div>
               </div>
               <div className="text-right">
@@ -93,7 +149,7 @@ const AgentRanking = () => {
                   <span className="font-medium">{agent.rating}</span>
                   <FaStar className="text-pink-400 text-xs" />
                 </div>
-                <div className="text-xs text-gray-400">{agent.responseTime}m response</div>
+                <div className="text-xs text-gray-400">{agent.fcr}% FCR</div>
               </div>
               <div className="text-right">
                 <div className="font-medium">{agent.sla}%</div>

@@ -22,8 +22,8 @@ const AgentPerformance = () => {
             id: agent.id,
             initials,
             name: agent.name,
-            responseTime: '10m', // Simulated until backend supports it
-            tickets: agent.assignedTickets.length,
+            responseTime: agent.stats?.avgResolutionTime || 'N/A',
+            tickets: agent.assignedTickets?.length || 0,
             resolution: agent.stats?.resolution || '0%',
             status: agent.status || 'Offline'
           };
@@ -47,9 +47,8 @@ const AgentPerformance = () => {
   return (
     <div className="mt-8">
       <div className="bg-white shadow-lg overflow-hidden rounded-4xl p-6 hover:shadow-pink-200">
-        <div className="flex justify-between items-center mb-10">
+        <div className="mb-10">
           <h2 className="text-lg font-bold text-gray-700">Agent Performance</h2>
-          <Button variant="simple" size="md">View All Agents</Button>
         </div>
         {agents.map((agent, index) => (
           <div key={agent.id} className={`flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 border border-pink-200 rounded-2xl mb-4 ${index !== agents.length - 1 ? 'border-b' : ''}`}>

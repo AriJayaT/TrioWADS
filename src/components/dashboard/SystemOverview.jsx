@@ -32,32 +32,36 @@ const SystemOverview = () => {
 
   const metricItems = [
     {
-      icon: <FaUsers className="text-lg text-gray-500" />,
+      icon: <FaUsers className="text-2xl text-blue-500" />,
       value: metrics.activeAgents,
       label: 'Active Agents',
       change: '+1',
-      changeType: 'positive'
+      changeType: 'positive',
+      metricType: 'tickets'
     },
     {
-      icon: <FaTicketAlt className="text-lg text-orange-400" />,
+      icon: <FaTicketAlt className="text-2xl text-purple-500" />,
       value: metrics.ticketVolume,
       label: 'Ticket Volume',
       change: '+12%',
-      changeType: 'positive'
+      changeType: 'positive',
+      metricType: 'ticketCount'
     },
     {
-      icon: <FaBolt className="text-lg" />,
+      icon: <FaBolt className="text-2xl text-yellow-500" />,
       value: metrics.systemResponse,
       label: 'System Response',
       change: '+0.1%',
-      changeType: 'positive'
+      changeType: 'positive',
+      metricType: 'response'
     },
     {
-      icon: <FaStar className="text-lg" />,
+      icon: <FaStar className="text-2xl text-orange-500" />,
       value: metrics.overallCSAT,
       label: 'Overall CSAT',
       change: '+0.2',
-      changeType: 'positive'
+      changeType: 'positive',
+      metricType: 'satisfaction'
     }
   ];
 
@@ -65,10 +69,6 @@ const SystemOverview = () => {
     <div>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4 sm:gap-0">
         <h1 className="text-2xl sm:text-3xl font-bold">System Overview</h1>
-        <div className="flex flex-wrap gap-3 sm:gap-6">
-          <Button variant='smallSubmit' size='md'>System Status</Button>
-          <Button variant='smallSubmit' size='md'>Generate Report</Button>
-        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -83,6 +83,7 @@ const SystemOverview = () => {
               label={metric.label}
               change={metric.change}
               changeType={metric.changeType}
+              metricType={metric.metricType}
             />
           </div>
         ))}

@@ -17,7 +17,7 @@ const FirstContactResolution = () => {
         name: agent.name,
         score: agent.stats?.firstContactResolution
           ? parseInt(agent.stats.firstContactResolution.replace('%', ''))
-          : (agent.assignedTickets.length % 30 + 60), // 💡 fallback dummy score
+          : 0
       }));
 
       setAgents(processed);

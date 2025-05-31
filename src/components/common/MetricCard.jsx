@@ -19,21 +19,17 @@ const iconMap = {
 };
 
 const MetricCard = ({ 
-  metricType, // Type of metric (used for icon selection)
+  icon, // The icon component to display
   value, // The main metric value
   label, // Description of the metric
-  trend = null, // Trend value (with + or - sign)
-  trendIsGood = true // Whether the trend direction is positive
+  change, // Trend value (with + or - sign)
+  changeType = 'positive', // Whether the trend direction is positive
+  metricType = 'default' // Type of metric (used for border color)
 }) => {
   // Determine if the trend is positive, negative or neutral
   const getTrendClass = () => {
-    if (!trend) return 'text-gray-400';
-    
-    // If the trend starts with '-' and that's not good, or starts with '+' and that is good
-    const isPositive = (trend.startsWith('-') && !trendIsGood) || 
-                      (trend.startsWith('+') && trendIsGood);
-    
-    return isPositive ? 'text-green-500' : 'text-red-500';
+    if (!change) return 'text-gray-400';
+    return changeType === 'positive' ? 'text-green-500' : 'text-red-500';
   };
 
   // Get border color based on metric type
@@ -53,11 +49,11 @@ const MetricCard = ({
     <div className={`bg-white p-4 rounded-xl shadow-sm border ${getBorderColor()}`}>
       <div className="flex justify-between items-start mb-3">
         <div className="text-xl">
-          {iconMap[metricType] || <FaChartLine className="text-gray-400" />}
+          {icon}
         </div>
-        {trend && (
+        {change && (
           <span className={`text-xs font-medium ${getTrendClass()}`}>
-            {trend}
+            {change}
           </span>
         )}
       </div>

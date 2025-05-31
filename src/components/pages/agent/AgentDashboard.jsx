@@ -35,39 +35,61 @@ const AgentDashboard = () => {
     try {
       setLoading(true);
       
-      // Get agent statistics
-      const statsResponse = await ticketService.getTicketStats();
+      // Log user info and auth token
+      console.log('Current User:', user);
+      console.log('Auth Token:', localStorage.getItem('authToken'));
       
-      if (statsResponse) {
-        // Update metrics with real data, handling undefined values
+      // Get agent statistics
+      console.log('Fetching ticket stats...');
+      const statsResponse = await ticketService.getTicketStats();
+      console.log('Raw Stats Response:', statsResponse);
+      console.log('Response Structure:', {
+        hasStats: !!statsResponse?.stats,
+        hasMetrics: !!statsResponse?.stats?.metrics,
+        metrics: statsResponse?.stats?.metrics
+      });
+      
+      // The metrics are nested inside stats.metrics in the response
+      const metrics = statsResponse?.stats?.metrics;
+      if (metrics) {
+        console.log('Found metrics:', metrics);
+        console.log('Setting metrics state with values:', {
+          avgResponseTime: metrics.avgResponseTime,
+          resolutionRate: metrics.resolutionRate,
+          csatScore: metrics.csatScore,
+          ticketsResolved: metrics.ticketsResolved
+        });
+        
         setMetrics({
           responseTime: {
-            value: statsResponse.avgResponseTime ? `${statsResponse.avgResponseTime}m` : null,
-            change: statsResponse.responseTimeChange > 0 ? `+${statsResponse.responseTimeChange}m` : `${statsResponse.responseTimeChange}m`,
-            direction: statsResponse.responseTimeChange > 0 ? 'up' : 'down'
+            value: metrics.avgResponseTime !== undefined ? `${metrics.avgResponseTime}m` : '-',
+            change: '0m',
+            direction: 'neutral'
           },
           resolutionRate: {
-            value: statsResponse.resolutionRate !== undefined ? `${statsResponse.resolutionRate}%` : null,
-            change: statsResponse.resolutionRateChange > 0 ? `+${statsResponse.resolutionRateChange}%` : `${statsResponse.resolutionRateChange}%`,
-            direction: statsResponse.resolutionRateChange > 0 ? 'up' : 'down'
+            value: metrics.resolutionRate !== undefined ? `${metrics.resolutionRate}%` : '-',
+            change: '0%',
+            direction: 'neutral'
           },
           csatScore: {
-            value: statsResponse.csatScore !== undefined ? statsResponse.csatScore?.toFixed(1) : null,
-            change: statsResponse.csatScoreChange > 0 ? `+${statsResponse.csatScoreChange}` : `${statsResponse.csatScoreChange}`,
-            direction: statsResponse.csatScoreChange > 0 ? 'up' : 'down'
+            value: metrics.csatScore !== undefined ? metrics.csatScore : '-',
+            change: '0',
+            direction: 'neutral'
           },
           ticketsResolved: {
-            value: statsResponse.ticketsResolved !== undefined ? `${statsResponse.ticketsResolved}` : null,
-            change: statsResponse.ticketsResolvedChange > 0 ? `+${statsResponse.ticketsResolvedChange}` : `${statsResponse.ticketsResolvedChange}`,
-            direction: statsResponse.ticketsResolvedChange > 0 ? 'up' : 'down'
+            value: metrics.ticketsResolved !== undefined ? `${metrics.ticketsResolved}` : '-',
+            change: '0',
+            direction: 'neutral'
           }
         });
+      } else {
+        console.error('No metrics found in response:', statsResponse);
       }
       
       // Fetch active tickets (assigned to this agent and not closed)
       const activeTicketsResponse = await ticketService.getTickets({
         assignedTo: user?._id,
-        status: 'Open,In Progress,Pending'
+        status: 'open,in-progress,pending'
       });
       
       // Format active tickets

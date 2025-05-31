@@ -77,6 +77,19 @@ const ticketSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
+  },
+  // Add reopen tracking fields
+  wasReopened: {
+    type: Boolean,
+    default: false
+  },
+  reopenCount: {
+    type: Number,
+    default: 0
+  },
+  previousStatus: {
+    type: String,
+    enum: ['open', 'in-progress', 'waiting-for-customer', 'waiting-for-agent', 'resolved', 'closed']
   }
 }, {
   timestamps: true,

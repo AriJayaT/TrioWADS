@@ -1,12 +1,22 @@
 import React from 'react';
+import { generateAnalyticsPDF } from '../../utils/pdfGenerator';
 
-const AnalyticsOverview = ({ activeTab, setActiveTab }) => {
+const AnalyticsOverview = ({ activeTab, setActiveTab, metrics }) => {
   const tabs = [
     { id: 'overview', name: 'Overview' },
     { id: 'resolution', name: 'Resolution Times' },
     { id: 'performance', name: 'Agent Performance' },
     { id: 'satisfaction', name: 'Satisfaction' },
   ];
+
+  const handleExportReport = () => {
+    try {
+      generateAnalyticsPDF(metrics);
+    } catch (error) {
+      console.error('Failed to generate PDF:', error);
+      // You might want to add a toast notification here
+    }
+  };
 
   return (
     <div className="mb-6 space-y-4">
@@ -26,7 +36,10 @@ const AnalyticsOverview = ({ activeTab, setActiveTab }) => {
               <option value="last-month">Last Month</option>
               <option value="custom">Custom</option>
             </select>
-            <button className="bg-pink-500 text-white px-4 py-2 rounded-lg text-sm">
+            <button 
+              className="bg-pink-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-pink-600 transition-colors"
+              onClick={handleExportReport}
+            >
               Export Report
             </button>
           </div>

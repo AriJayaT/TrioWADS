@@ -315,6 +315,48 @@ const TicketDetails = () => {
         </div>
       </div>
 
+      {/* Closed Ticket Section */}
+      {ticket.status === 'closed' && (
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mt-6">
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Ticket Closed</h3>
+          <p className="text-gray-600 mb-4">
+            This ticket has been closed. If you need further assistance or the issue has recurred, 
+            you can reopen this ticket or create a new one.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <button
+              onClick={async () => {
+                try {
+                  console.log('Reopening closed ticket');
+                  const result = await ticketService.updateTicket(ticketId, { 
+                    status: 'waiting-for-agent'
+                  });
+                  console.log('Ticket reopen result:', result);
+                  
+                  // Update local state
+                  setTicket(prev => ({...prev, status: 'waiting-for-agent'}));
+                  
+                  // Refresh to ensure we have the latest data
+                  refreshTicket();
+                } catch (err) {
+                  console.error('Error reopening ticket:', err);
+                  setError('Failed to reopen ticket. Please try again.');
+                }
+              }}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 focus:outline-none flex-1 flex items-center justify-center gap-2"
+            >
+              <span>Reopen Ticket</span>
+            </button>
+            <Link
+              to="/customer/tickets/new"
+              className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 focus:outline-none flex-1 flex items-center justify-center gap-2"
+            >
+              <span>Create New Ticket</span>
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* Resolution Confirmation Options */}
       {ticket.status === 'resolved' && !showRatingForm && (
         <div className="mb-6 bg-green-50 p-6 rounded-lg border border-green-200">

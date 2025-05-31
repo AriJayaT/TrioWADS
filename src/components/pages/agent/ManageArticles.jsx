@@ -10,6 +10,8 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const ManageArticles = () => {
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [publishFilter, setPublishFilter] = useState('all');
+  const [notification, setNotification] = useState({ show: false, message: '' });
   const [formData, setFormData] = useState({
     title: '',
     category: 'Care Guide',
@@ -60,10 +62,12 @@ const ManageArticles = () => {
         await axios.put(`${API_URL}/articles/${editId}`, payload, {
           headers: { Authorization: `Bearer ${token}` }
         });
+        setNotification({ show: true, message: 'Article updated successfully!' });
       } else {
         await axios.post(`${API_URL}/articles`, payload, {
           headers: { Authorization: `Bearer ${token}` }
         });
+        setNotification({ show: true, message: 'Article created successfully!' });
       }
       setFormData({
         title: '',
@@ -75,8 +79,14 @@ const ManageArticles = () => {
       });
       setEditId(null);
       fetchArticles();
+      
+      // Hide notification after 3 seconds
+      setTimeout(() => {
+        setNotification({ show: false, message: '' });
+      }, 3000);
     } catch (error) {
       console.error("Error saving article:", error);
+      setNotification({ show: true, message: 'Error saving article. Please try again.' });
     }
   };
 
@@ -105,14 +115,35 @@ const ManageArticles = () => {
     setEditId(article._id || article.id);
   };
 
+  const getFilteredArticles = () => {
+    if (publishFilter === 'all') return articles;
+    return articles.filter(article => article.isPublished === (publishFilter === 'published'));
+  };
+
   return (
     <AgentLayout>
       <main className="p-4 md:p-6 max-w-6xl mx-auto">
+        {notification.show && (
+          <div className="fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fade-in-out">
+            {notification.message}
+          </div>
+        )}
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold">Knowledge Base Articles</h1>
-          <button onClick={fetchArticles} className="text-sm flex items-center bg-pink-100 text-pink-600 px-3 py-1 rounded-full">
-            <FaSync className="mr-1" /> Refresh
-          </button>
+          <div className="flex items-center gap-4">
+            <select 
+              value={publishFilter}
+              onChange={(e) => setPublishFilter(e.target.value)}
+              className="text-sm bg-white border border-gray-300 rounded px-3 py-1"
+            >
+              <option value="all">All Articles</option>
+              <option value="published">Published Only</option>
+              <option value="unpublished">Unpublished Only</option>
+            </select>
+            <button onClick={fetchArticles} className="text-sm flex items-center bg-pink-100 text-pink-600 px-3 py-1 rounded-full">
+              <FaSync className="mr-1" /> Refresh
+            </button>
+          </div>
         </div>
 
         <div className="bg-white rounded-lg shadow p-6 mb-6">
@@ -128,7 +159,7 @@ const ManageArticles = () => {
             </select>
             <input name="description" value={formData.description} onChange={handleChange} placeholder="Short description" required className="col-span-2 border px-3 py-2 rounded" />
             <textarea name="content" value={formData.content} onChange={handleChange} placeholder="Write your article here in plain English. Line breaks will be preserved." rows="6" required className="col-span-2 border px-3 py-2 rounded" />
-            <input name="tags" value={formData.tags} onChange={handleChange} placeholder="Comma-separated tags" className="col-span-2 border px-3 py-2 rounded" />
+            <input name="tags" value={formData.tags} onChange={handleChange} placeholder="Tags (Customer will not see these)" className="col-span-2 border px-3 py-2 rounded" />
             <label className="col-span-2 flex items-center gap-2">
               <input type="checkbox" name="isPublished" checked={formData.isPublished} onChange={handleChange} />
               <span>Published</span>
@@ -147,10 +178,15 @@ const ManageArticles = () => {
             <p className="text-gray-600">No articles available.</p>
           ) : (
             <div className="grid md:grid-cols-2 gap-4">
-              {articles.map(article => (
+              {getFilteredArticles().map(article => (
                 <div key={article._id} className="border p-4 rounded hover:shadow-md">
                   <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs bg-pink-100 text-pink-600 px-2 py-1 rounded">{article.category}</span>
+                    <div className="flex gap-2">
+                      <span className="text-xs bg-pink-100 text-pink-600 px-2 py-1 rounded">{article.category}</span>
+                      <span className={`text-xs px-2 py-1 rounded ${article.isPublished ? 'bg-green-100 text-green-600' : 'bg-yellow-100 text-yellow-600'}`}>
+                        {article.isPublished ? 'Published' : 'Draft'}
+                      </span>
+                    </div>
                     <div className="flex gap-3">
                     <button onClick={() => handleEdit(article)} className="text-sm text-blue-500 hover:underline flex items-center">
                       <FaPen className="mr-1" /> Edit

@@ -144,9 +144,40 @@ const ticketService = {
    */
   getTicketStats: async () => {
     try {
+      console.log('Fetching ticket stats...');
       const response = await apiClient.get('/tickets/stats');
-      return response.data.stats;
+      console.log('Full API Response:', response);
+      
+      if (!response.data) {
+        console.error('No data in response');
+        return {};
+      }
+      
+      // The backend always returns the data in response.data.stats
+      if (response.data.success && response.data.stats) {
+        console.log('Found stats in response:', response.data.stats);
+        
+        // Ensure metrics exist and have default values
+        const metrics = response.data.stats.metrics || {};
+        response.data.stats.metrics = {
+          avgResponseTime: metrics.avgResponseTime || 0,
+          resolutionRate: metrics.resolutionRate || 0,
+          csatScore: metrics.csatScore || '0.0',
+          ticketsResolved: metrics.ticketsResolved || 0
+        };
+        
+        console.log('Processed metrics:', response.data.stats.metrics);
+        return response.data;
+      } else {
+        console.error('Unexpected response structure:', response.data);
+        return {};
+      }
     } catch (error) {
+      console.error('Failed to fetch ticket statistics:', error);
+      if (error.response) {
+        console.error('Error response:', error.response.data);
+        console.error('Error status:', error.response.status);
+      }
       throw error.response?.data?.error || 'Failed to fetch ticket statistics';
     }
   },

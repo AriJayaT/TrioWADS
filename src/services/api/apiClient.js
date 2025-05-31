@@ -16,9 +16,19 @@ apiClient.interceptors.request.use(
   (config) => {
     try {
       const token = localStorage.getItem('authToken');
+      console.log('Current auth token:', token ? `${token.substring(0, 10)}...` : 'No token');
+      
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
+        console.log('Added auth header:', config.headers.Authorization.substring(0, 20) + '...');
       }
+      
+      console.log('Request config:', {
+        url: config.url,
+        method: config.method,
+        hasAuthHeader: !!config.headers.Authorization
+      });
+      
       return config;
     } catch (error) {
       console.error('Request interceptor error:', error);
@@ -34,6 +44,11 @@ apiClient.interceptors.request.use(
 // Response interceptor - handle common errors
 apiClient.interceptors.response.use(
   (response) => {
+    console.log('Response received:', {
+      url: response.config.url,
+      status: response.status,
+      hasData: !!response.data
+    });
     return response;
   },
   (error) => {
@@ -41,6 +56,7 @@ apiClient.interceptors.response.use(
     
     // Handle authentication errors
     if (error.response && error.response.status === 401) {
+      console.log('Authentication error detected, clearing tokens');
       // Clear token and user data
       localStorage.removeItem('authToken');
       localStorage.removeItem('user');

@@ -21,13 +21,16 @@ export const protect = async (req, res, next) => {
   try {
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'jellycatsecret');
+    console.log('Decoded token:', decoded);
 
     // Add user from payload to request object
     req.user = {
+      _id: decoded.id, // Add _id for MongoDB queries
       id: decoded.id,
       role: decoded.role
     };
 
+    console.log('User set in request:', req.user);
     return next();
   } catch (error) {
     console.error('Token verification error:', error.message);

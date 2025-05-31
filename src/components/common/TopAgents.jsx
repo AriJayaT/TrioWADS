@@ -7,14 +7,22 @@ const TopAgents = () => {
 
   const fetchAgents = async () => {
     try {
-      const res = await axios.get("http://localhost:5000/api/users/agents", {
+      // Get base agent data with stats
+      const agentsRes = await axios.get("http://localhost:5000/api/users/agents", {
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
         },
       });
 
-      const processed = (res.data?.agents || [])
-        .map((agent) => {
+      // Get agent's specific ratings and process the data
+      const processed = await Promise.all((agentsRes.data?.agents || [])
+        .map(async (agent) => {
+          const ratingsRes = await axios.get(`http://localhost:5000/api/tickets/agent/${agent.id}/ratings`, {
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("token")}`,
+            },
+          });
+
           const initials = agent.name
             .split(" ")
             .map((n) => n[0])
@@ -24,16 +32,21 @@ const TopAgents = () => {
             (t) => t.status === "closed"
           ).length;
 
+          // Get the agent's average rating
+          const rating = ratingsRes.data?.data?.averageRating || 0;
+
           return {
             name: agent.name,
             initials,
             ticketsResolved: closedTickets,
-            avgResolution: "1h 20m", // placeholder
-            rating: 4.5, // placeholder
+            avgResolution: agent.stats?.avgResolutionTime || '0h 0m',
+            rating: parseFloat(rating).toFixed(1),
           };
-        })
-        .sort((a, b) => b.ticketsResolved - a.ticketsResolved)
-        .slice(0, 3); // Top 3
+        }))
+        .then(agents => agents
+          .sort((a, b) => b.ticketsResolved - a.ticketsResolved)
+          .slice(0, 3) // Top 3
+        );
 
       setAgents(processed);
     } catch (err) {

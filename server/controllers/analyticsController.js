@@ -113,33 +113,77 @@ export const getSystemOverview = async (req, res) => {
     const activeAgents = agents.filter(agent => agent.status !== 'offline').length;
     const agentTotal = agents.length;
     const closedTickets = tickets.filter(t => t.status === 'closed');
-    const openTickets = tickets.filter(t => t.status !== 'closed');
+    const resolvedTickets = tickets.filter(t => t.status === 'resolved');
+    const completedTickets = [...closedTickets, ...resolvedTickets];
+    const openTickets = tickets.filter(t => !['closed', 'resolved'].includes(t.status));
 
     const avgResolutionTime = (() => {
-      const total = closedTickets.reduce((sum, t) => sum + (new Date(t.updatedAt || t.closedAt) - new Date(t.createdAt)), 0);
-      const avg = closedTickets.length ? total / closedTickets.length : 0;
+      const total = completedTickets.reduce((sum, t) => {
+        const diff = new Date(t.updatedAt || t.closedAt) - new Date(t.createdAt);
+        return sum + Math.max(diff, 0);
+      }, 0);
+      const avg = completedTickets.length ? total / completedTickets.length : 0;
       const mins = Math.floor(avg / 60000);
       return `${Math.floor(mins / 60)}h ${mins % 60}m`;
     })();
 
     const avgFirstResponseTime = (() => {
-      const times = tickets.map(ticket => {
-        const reply = replies.find(r => r.ticket.toString() === ticket._id.toString());
-        return reply ? new Date(reply.createdAt) - new Date(ticket.createdAt) : null;
+      const ticketFirstResponses = tickets.map(ticket => {
+        const firstAgentReply = replies
+          .filter(r => {
+            const isAgentReply = agents.some(a => a._id.toString() === r.user.toString());
+            return r.ticket.toString() === ticket._id.toString() && isAgentReply;
+          })
+          .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))[0];
+
+        if (!firstAgentReply) return null;
+
+        const responseTime = new Date(firstAgentReply.createdAt) - new Date(ticket.createdAt);
+        return responseTime > 0 ? responseTime : null;
       }).filter(Boolean);
-      const avg = times.length ? times.reduce((a, b) => a + b, 0) / times.length : 0;
+
+      const avg = ticketFirstResponses.length 
+        ? ticketFirstResponses.reduce((a, b) => a + b, 0) / ticketFirstResponses.length 
+        : 0;
       const mins = Math.floor(avg / 60000);
       return `${Math.floor(mins / 60)}h ${mins % 60}m`;
     })();
 
     const slaWithin24h = (() => {
-      const count = closedTickets.filter(t => new Date(t.updatedAt || t.closedAt) - new Date(t.createdAt) <= 86400000).length;
-      return ((count / closedTickets.length) * 100).toFixed(1);
+      const count = completedTickets.filter(t => {
+        const resolutionTime = new Date(t.updatedAt || t.closedAt) - new Date(t.createdAt);
+        return resolutionTime > 0 && resolutionTime <= 86400000;
+      }).length;
+      return ((count / (completedTickets.length || 1)) * 100).toFixed(1);
     })();
 
-    const overdueTickets = openTickets.filter(t => new Date() - new Date(t.createdAt) > 86400000).length;
-    const avgCSAT = ratings.length ? (ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length).toFixed(1) : '0.0';
-    const responseRate = tickets.length > 0 ? ((new Set(replies.map(r => r.ticket.toString())).size / tickets.length) * 100).toFixed(1) : '0.0';
+    const overdueTickets = openTickets.filter(t => {
+      const ticketAge = new Date() - new Date(t.createdAt);
+      return ticketAge > 86400000;
+    }).length;
+
+    const avgCSAT = ratings.length 
+      ? (ratings.reduce((sum, r) => sum + Math.min(Math.max(r.rating, 1), 5), 0) / ratings.length).toFixed(1) 
+      : '0.0';
+
+    const responseRate = (() => {
+      const ticketsWithAgentReplies = tickets.filter(ticket => 
+        replies.some(reply => 
+          reply.ticket.toString() === ticket._id.toString() &&
+          agents.some(agent => agent._id.toString() === reply.user.toString())
+        )
+      ).length;
+      
+      return tickets.length > 0 
+        ? Math.min((ticketsWithAgentReplies / tickets.length * 100), 100).toFixed(1)
+        : '0.0';
+    })();
+
+    const prevPeriodResolutionTime = avgResolutionTime;
+    const resolutionTrend = "-12%";
+    const responseTrend = "-18%";
+    const satisfactionTrend = "+0.3";
+    const ticketsTrend = "+5%";
 
     const metrics = {
       activeAgents: `${activeAgents}/${agentTotal}`,
@@ -153,23 +197,24 @@ export const getSystemOverview = async (req, res) => {
       metrics,
       overview: {
         avgResolutionTime,
+        firstResponseTime: avgFirstResponseTime,
         totalTickets: tickets.length,
         customerSatisfaction: avgCSAT,
-        resolutionTrend: "-12%",
+        resolutionTrend,
         resolutionTrendIsGood: false,
-        responseTrend: "-18%",
+        responseTrend,
         responseTrendIsGood: false,
-        satisfactionTrend: "+0.3",
-        ticketsTrend: "+5%"
+        satisfactionTrend,
+        ticketsTrend
       },
       resolution: {
         avgResolutionTime,
         firstResponseTime: avgFirstResponseTime,
         withinSLA: `${slaWithin24h}%`,
         overdueTickets,
-        resolutionTrend: "-12%",
+        resolutionTrend,
         resolutionTrendIsGood: false,
-        responseTrend: "-18%",
+        responseTrend,
         responseTrendIsGood: false,
         slaTrend: "+2.4%",
         overdueTrend: "+5",
