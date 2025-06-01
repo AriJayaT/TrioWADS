@@ -215,7 +215,9 @@ io.on('connection', (socket) => {
       
       // Join role-specific room
       socket.join(`role_${user.role}`);
-      
+      if (user.role === 'agent') {
+        console.log(`[Socket] Agent ${userId} joined role_agent room`);
+      }
       // If user is an agent, join agent type specific room
       if (user.role === 'agent') {
         socket.join(`agent_type_${user.agentType}`);

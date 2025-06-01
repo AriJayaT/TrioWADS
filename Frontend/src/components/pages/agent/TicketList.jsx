@@ -59,39 +59,41 @@ const TicketList = () => {
   const handleTicketAssigned = useCallback((assignedTicket) => {
     console.log(`[${COMPONENT_NAME}] Ticket assigned event:`, assignedTicket);
     if (!isMountedRef.current) return;
+    const ticketData = assignedTicket.ticket || assignedTicket;
     
-    // Only update if the ticket is assigned to this agent
-    if (
-      assignedTicket.assignedTo &&
-      (assignedTicket.assignedTo._id === user._id || assignedTicket.assignedTo === user._id)
-    ) {
-      setUnassignedTickets(prev => prev.filter(t => (t._id !== assignedTicket._id && t.id !== assignedTicket._id)));
+    // Always remove from unassignedTickets when assigned
+    setUnassignedTickets(prev => prev.filter(t => (t._id !== ticketData._id && t.id !== ticketData._id)));
+    
+    // Update in assigned tickets if this agent is assigned
+    if (ticketData.assignedTo && (ticketData.assignedTo._id === user._id || ticketData.assignedTo === user._id)) {
       setTickets(prev => {
-        // Avoid duplicates
-        const exists = prev.some(t => (t._id === assignedTicket._id || t.id === assignedTicket._id));
+        const exists = prev.some(t => (t._id === ticketData._id || t.id === ticketData._id));
         if (!exists) {
-          return [assignedTicket, ...prev];
+          return [ticketData, ...prev];
         }
-        return prev;
+        return prev.map(t => (t._id === ticketData._id || t.id === ticketData._id) ? ticketData : t);
       });
       setAssignedCount(prev => prev + 1);
     }
   }, [user._id]);
 
   const handleNewTicket = useCallback((newTicket) => {
-    console.log(`[${COMPONENT_NAME}] New ticket received:`, newTicket);
+    console.log('[Agent] Received new_ticket:', newTicket);
     if (!isMountedRef.current) return;
-    
-    // Only add to unassigned if it matches agent type
-    if (
-      !newTicket.assignedTo &&
-      (agentType === 'Senior' ? newTicket.priority === 'high' : (newTicket.priority === 'low' || newTicket.priority === 'medium'))
-    ) {
-      setUnassignedTickets((prev) => {
-        const exists = prev.some(t => (t._id === newTicket._id || t.id === newTicket._id));
-        if (!exists) return [newTicket, ...prev];
-        return prev;
-      });
+    const ticketData = newTicket.ticket || newTicket;
+    // Only add to unassigned if it matches agent type and is not already assigned
+    if (!ticketData.assignedTo) {
+      const matchesAgentType = agentType === 'Senior' ? 
+        ticketData.priority === 'high' : 
+        (ticketData.priority === 'low' || ticketData.priority === 'medium');
+      
+      if (matchesAgentType) {
+        setUnassignedTickets((prev) => {
+          const exists = prev.some(t => (t._id === ticketData._id || t.id === ticketData._id));
+          if (!exists) return [ticketData, ...prev];
+          return prev.map(t => (t._id === ticketData._id || t.id === ticketData._id) ? ticketData : t);
+        });
+      }
     }
   }, [agentType]);
 
@@ -99,16 +101,17 @@ const TicketList = () => {
     console.log(`[${COMPONENT_NAME}] Ticket update received:`, updatedTicket);
     if (!isMountedRef.current) return;
     
-    const ticketId = updatedTicket._id || updatedTicket.id;
+    const ticketData = updatedTicket.ticket || updatedTicket;
+    const ticketId = ticketData._id || ticketData.id;
     
     // Update assigned tickets if this agent is assigned
     setTickets((prev) => {
       const exists = prev.some(t => (t._id === ticketId || t.id === ticketId));
       if (exists) {
-        return prev.map(t => (t._id === ticketId || t.id === ticketId) ? updatedTicket : t);
-      } else if (updatedTicket.assignedTo && (updatedTicket.assignedTo._id === user._id || updatedTicket.assignedTo === user._id)) {
+        return prev.map(t => (t._id === ticketId || t.id === ticketId) ? ticketData : t);
+      } else if (ticketData.assignedTo && (ticketData.assignedTo._id === user._id || ticketData.assignedTo === user._id)) {
         // If the ticket is newly assigned to this agent, add it
-        return [updatedTicket, ...prev];
+        return [ticketData, ...prev];
       }
       return prev;
     });
@@ -116,19 +119,19 @@ const TicketList = () => {
     // Update in unassigned tickets
     setUnassignedTickets((prev) => {
       // If now assigned, remove from unassigned
-      if (updatedTicket.assignedTo) {
+      if (ticketData.assignedTo) {
         return prev.filter(t => (t._id !== ticketId && t.id !== ticketId));
       }
       // If still unassigned and matches agent type, update or add
       if (
-        (agentType === 'Senior' && updatedTicket.priority === 'high') ||
-        (agentType !== 'Senior' && (updatedTicket.priority === 'low' || updatedTicket.priority === 'medium'))
+        (agentType === 'Senior' && ticketData.priority === 'high') ||
+        (agentType !== 'Senior' && (ticketData.priority === 'low' || ticketData.priority === 'medium'))
       ) {
         const exists = prev.some(t => (t._id === ticketId || t.id === ticketId));
         if (exists) {
-          return prev.map(t => (t._id === ticketId || t.id === ticketId) ? updatedTicket : t);
+          return prev.map(t => (t._id === ticketId || t.id === ticketId) ? ticketData : t);
         } else {
-          return [updatedTicket, ...prev];
+          return [ticketData, ...prev];
         }
       }
       // Otherwise, remove from unassigned
@@ -161,6 +164,9 @@ const TicketList = () => {
     subscribeToEvent('new_ticket', handleNewTicket, COMPONENT_NAME);
     subscribeToEvent('ticket_updated', handleTicketUpdate, COMPONENT_NAME);
     subscribeToEvent('new_reply', handleNewReply, COMPONENT_NAME);
+    subscribeToEvent('ticket_status_change', handleTicketUpdate, COMPONENT_NAME);
+    subscribeToEvent('ticket_closed', handleTicketUpdate, COMPONENT_NAME);
+    subscribeToEvent('ticket_resolved', handleTicketUpdate, COMPONENT_NAME);
 
     return () => {
       console.log(`[${COMPONENT_NAME}] Cleaning up socket event subscriptions`);
@@ -207,6 +213,19 @@ const TicketList = () => {
     };
 
     initializeData();
+
+    // Set up periodic refresh
+    const refreshInterval = setInterval(() => {
+      if (isMountedRef.current) {
+        console.log(`[${COMPONENT_NAME}] Performing periodic ticket refresh`);
+        fetchTickets(user.agentType || 'Junior');
+        fetchAssignedCount();
+      }
+    }, 60000); // Refresh every 60 seconds
+
+    return () => {
+      clearInterval(refreshInterval);
+    };
   }, [user]);
 
   // Functions to fetch data

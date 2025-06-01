@@ -23,7 +23,11 @@ export const SocketProvider = ({ children }) => {
 
   // Subscribe/unsubscribe functions with improved conflict handling
   const subscribeToEvent = useCallback((eventName, handler, componentName = 'unknown') => {
-    console.log(`[Socket] ${componentName} subscribing to ${eventName}`);
+    console.log(`[Socket] ${componentName} subscribing to ${eventName}`, {
+      isConnected,
+      hasSocket: !!socket,
+      userId: user?.id
+    });
     
     if (!eventHandlersRef.current.has(eventName)) {
       eventHandlersRef.current.set(eventName, new Map());
@@ -40,6 +44,7 @@ export const SocketProvider = ({ children }) => {
     if (socket && isConnected) {
       const wrappedHandler = (...args) => {
         try {
+          console.log(`[Socket] Received ${eventName} event:`, args);
           handler(...args);
         } catch (error) {
           console.error(`[Socket] Error in ${componentName} handler for ${eventName}:`, error);
@@ -49,8 +54,10 @@ export const SocketProvider = ({ children }) => {
       socket.on(eventName, wrappedHandler);
       activeListenersRef.current.add({ eventName, handler: wrappedHandler, componentName });
       console.log(`[Socket] Handler registered for ${eventName} from ${componentName}`);
+    } else {
+      console.log(`[Socket] Socket not ready for ${eventName}, handler will be registered when connected`);
     }
-  }, [socket, isConnected]);
+  }, [socket, isConnected, user?.id]);
 
   const unsubscribeFromEvent = useCallback((eventName, handler, componentName = 'unknown') => {
     console.log(`[Socket] ${componentName} unsubscribing from ${eventName}`);
@@ -118,30 +125,60 @@ export const SocketProvider = ({ children }) => {
       return;
     }
 
+    // If we already have a socket instance and it's connected, just update the user
+    if (socketRef.current && socketRef.current.connected) {
+      console.log('[Socket] Updating user for existing connection:', user.id);
+      socketRef.current.emit('authenticate', user.id);
+      return;
+    }
+
     console.log('[Socket] Connecting to:', SOCKET_URL);
     const socketInstance = io(SOCKET_URL, {
       transports: ['websocket'],
       reconnection: true,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: 10,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       timeout: 20000,
-      autoConnect: true
+      autoConnect: true,
+      forceNew: true
     });
 
     socketRef.current = socketInstance;
 
     // Set up connection event handlers
     socketInstance.on('connect', () => {
-      console.log('[Socket] Connected, authenticating user:', user.id);
+      console.log('[Socket] Connected successfully');
       setIsConnected(true);
       reconnectAttempts.current = 0;
-      socketInstance.emit('authenticate', user.id);
+      
+      // Add a small delay before authentication to ensure connection is stable
+      setTimeout(() => {
+        socketInstance.emit('authenticate', user.id);
+      }, 100);
     });
 
     socketInstance.on('authenticated', (data) => {
       console.log('[Socket] Authentication successful, role:', data.role);
       setSocket(socketInstance);
+      
+      // Re-register all event handlers after successful authentication
+      eventHandlersRef.current.forEach((handlerMap, eventName) => {
+        handlerMap.forEach((handlerSet, componentName) => {
+          handlerSet.forEach((handler) => {
+            const wrappedHandler = (...args) => {
+              try {
+                handler(...args);
+              } catch (error) {
+                console.error(`[Socket] Error in ${componentName} handler for ${eventName}:`, error);
+              }
+            };
+            
+            socketInstance.on(eventName, wrappedHandler);
+            activeListenersRef.current.add({ eventName, handler: wrappedHandler, componentName });
+          });
+        });
+      });
     });
 
     socketInstance.on('disconnect', (reason) => {
@@ -154,10 +191,14 @@ export const SocketProvider = ({ children }) => {
       // Only attempt to reconnect if it wasn't a client-side disconnect
       if (reason !== 'io client disconnect' && reconnectAttempts.current < maxReconnectAttempts) {
         reconnectAttempts.current++;
+        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current - 1), 5000);
+        console.log(`[Socket] Attempting to reconnect in ${delay}ms... (${reconnectAttempts.current}/${maxReconnectAttempts})`);
+        
         setTimeout(() => {
-          console.log(`[Socket] Attempting to reconnect... (${reconnectAttempts.current}/${maxReconnectAttempts})`);
-          socketInstance.connect();
-        }, Math.min(1000 * reconnectAttempts.current, 5000));
+          if (socketInstance && !socketInstance.connected) {
+            socketInstance.connect();
+          }
+        }, delay);
       } else if (reconnectAttempts.current >= maxReconnectAttempts) {
         console.error('[Socket] Max reconnection attempts reached');
         setSocket(null);
@@ -167,6 +208,23 @@ export const SocketProvider = ({ children }) => {
     socketInstance.on('connect_error', (error) => {
       console.error('[Socket] Connection error:', error);
       setIsConnected(false);
+      
+      // Attempt to reconnect on connection error
+      if (reconnectAttempts.current < maxReconnectAttempts) {
+        reconnectAttempts.current++;
+        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current - 1), 5000);
+        console.log(`[Socket] Connection error, attempting to reconnect in ${delay}ms... (${reconnectAttempts.current}/${maxReconnectAttempts})`);
+        
+        setTimeout(() => {
+          if (socketInstance && !socketInstance.connected) {
+            socketInstance.connect();
+          }
+        }, delay);
+      }
+    });
+
+    socketInstance.on('reconnect', (attemptNumber) => {
+      console.log('[Socket] Reconnected after', attemptNumber, 'attempts');
     });
 
     // Cleanup function

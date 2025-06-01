@@ -36,6 +36,7 @@ export const protect = async (req, res, next) => {
       // Add user and role to request object
       req.user = user;
       req.userRole = decoded.role; // Use the role from the token
+      console.log('[Auth] req.user:', req.user ? { id: req.user.id, email: req.user.email, role: req.user.role } : null);
 
       next();
     } catch (err) {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import ticketService from '../../../services/api/ticketService';
 import { useAuth } from '../../../context/AuthContext';
@@ -17,29 +17,158 @@ const CustomerDashboard = () => {
   const [notifications, setNotifications] = useState([]);
   const { user } = useAuth();
   const { socket, isConnected, subscribeToEvent, unsubscribeAllFromComponent } = useSocket();
+  const isMountedRef = useRef(true);
 
-  // Handle new notifications
-  const handleNewNotification = (notification) => {
+  // Handle new notifications with useCallback
+  const handleNewNotification = useCallback((notification) => {
     console.log(`[${COMPONENT_NAME}] New notification received:`, notification);
+    if (!isMountedRef.current) return;
     setNotifications(prev => [notification, ...prev]);
-  };
+  }, []);
+
+  // Socket event handlers with useCallback
+  const handleTicketUpdate = useCallback((data) => {
+    console.log(`[${COMPONENT_NAME}] Handling ticket update:`, data);
+    if (!isMountedRef.current) return;
+    setTickets(prevTickets => {
+      const updatedTickets = prevTickets.map(ticket => {
+        const match = ticket._id === data._id || ticket._id === data.ticket?._id;
+        if (match) {
+          const newStatus = data.status || data.ticket?.status || ticket.status;
+          const updatedTicket = {
+            ...ticket,
+            ...(data.ticket || data),
+            status: newStatus,
+            lastUpdated: new Date().toISOString()
+          };
+          console.log(`[${COMPONENT_NAME}] Updated ticket (ticket_updated):`, updatedTicket);
+          return updatedTicket;
+        }
+        return ticket;
+      });
+      return updatedTickets;
+    });
+  }, []);
+
+  const handleNewReply = useCallback((data) => {
+    console.log(`[${COMPONENT_NAME}] Handling new reply:`, data);
+    if (!isMountedRef.current) return;
+    
+    setTickets(prevTickets => {
+      const updatedTickets = prevTickets.map(ticket => {
+        if (ticket._id === data.ticket?._id) {
+          const updatedTicket = {
+            ...ticket,
+            ...data.ticket,
+            lastUpdated: new Date().toISOString()
+          };
+          console.log(`[${COMPONENT_NAME}] Updated ticket with new reply:`, updatedTicket);
+          return updatedTicket;
+        }
+        return ticket;
+      });
+      return updatedTickets;
+    });
+  }, []);
+
+  const handleTicketAssigned = useCallback((data) => {
+    console.log(`[${COMPONENT_NAME}] Handling ticket assigned:`, data);
+    if (!isMountedRef.current) return;
+    
+    setTickets(prevTickets => {
+      const ticketId = data._id || data.ticket?._id;
+      const exists = prevTickets.some(ticket => ticket._id === ticketId);
+      
+      if (exists) {
+        const updatedTickets = prevTickets.map(ticket => {
+          if (ticket._id === ticketId) {
+            const updatedTicket = {
+              ...ticket,
+              ...(data.ticket || data),
+              lastUpdated: new Date().toISOString()
+            };
+            console.log(`[${COMPONENT_NAME}] Updated assigned ticket:`, updatedTicket);
+            return updatedTicket;
+          }
+          return ticket;
+        });
+        return updatedTickets;
+      }
+      
+      const newTicket = {
+        ...(data.ticket || data),
+        lastUpdated: new Date().toISOString()
+      };
+      console.log(`[${COMPONENT_NAME}] Added new assigned ticket:`, newTicket);
+      return [newTicket, ...prevTickets];
+    });
+  }, []);
+
+  const handleTicketStatusChange = useCallback((data) => {
+    console.log(`[${COMPONENT_NAME}] Handling ticket status change:`, data);
+    if (!isMountedRef.current) return;
+    setTickets(prevTickets => {
+      const updatedTickets = prevTickets.map(ticket => {
+        const match = ticket._id === data._id || ticket._id === data.ticket?._id;
+        if (match) {
+          const updatedTicket = {
+            ...ticket,
+            ...(data.ticket || data),
+            status: data.status || data.ticket?.status || ticket.status,
+            lastUpdated: new Date().toISOString()
+          };
+          console.log(`[${COMPONENT_NAME}] Updated ticket (ticket_status_change):`, updatedTicket);
+          return updatedTicket;
+        }
+        return ticket;
+      });
+      return updatedTickets;
+    });
+  }, []);
+
+  const handleNewTicket = useCallback((data) => {
+    console.log(`[${COMPONENT_NAME}] Handling new ticket:`, data);
+    if (!isMountedRef.current) return;
+    
+    const newTicket = {
+      ...(data.ticket || data),
+      lastUpdated: new Date().toISOString()
+    };
+    console.log(`[${COMPONENT_NAME}] Adding new ticket:`, newTicket);
+    setTickets(prevTickets => [newTicket, ...prevTickets]);
+  }, []);
 
   // Set up socket subscriptions
   useEffect(() => {
-    if (!socket || !isConnected) return;
+    if (!socket || !isConnected) {
+      console.log(`[${COMPONENT_NAME}] Socket not connected, skipping event handlers`);
+      return;
+    }
 
     console.log(`[${COMPONENT_NAME}] Setting up socket event handlers`);
+
+    // Subscribe to events with component identifier
     subscribeToEvent('new_notification', handleNewNotification, COMPONENT_NAME);
+    subscribeToEvent('ticket_updated', handleTicketUpdate, COMPONENT_NAME);
+    subscribeToEvent('new_reply', handleNewReply, COMPONENT_NAME);
+    subscribeToEvent('ticket_assigned', handleTicketAssigned, COMPONENT_NAME);
+    subscribeToEvent('ticket_status_change', handleTicketStatusChange, COMPONENT_NAME);
+    subscribeToEvent('new_ticket', handleNewTicket, COMPONENT_NAME);
+    subscribeToEvent('ticket_closed', handleTicketStatusChange, COMPONENT_NAME);
+    subscribeToEvent('ticket_resolved', handleTicketStatusChange, COMPONENT_NAME);
 
     return () => {
       console.log(`[${COMPONENT_NAME}] Cleaning up socket event subscriptions`);
       unsubscribeAllFromComponent(COMPONENT_NAME);
     };
-  }, [socket, isConnected, subscribeToEvent, unsubscribeAllFromComponent]);
+  }, [socket, isConnected, subscribeToEvent, unsubscribeAllFromComponent,
+      handleNewNotification, handleTicketUpdate, handleNewReply, 
+      handleTicketAssigned, handleTicketStatusChange, handleNewTicket]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      isMountedRef.current = false;
       unsubscribeAllFromComponent(COMPONENT_NAME);
     };
   }, [unsubscribeAllFromComponent]);
@@ -59,68 +188,7 @@ const CustomerDashboard = () => {
     };
 
     fetchTickets();
-
-    // Subscribe to socket events
-    const handleTicketUpdate = (data) => {
-      console.log('Handling ticket update:', data);
-      setTickets(prevTickets => {
-        const updatedTickets = prevTickets.map(ticket => 
-          ticket._id === data._id ? { ...ticket, ...data, lastUpdated: new Date().toISOString() } : ticket
-        );
-        return updatedTickets;
-      });
-    };
-
-    const handleNewReply = (data) => {
-      console.log('Handling new reply:', data);
-      setTickets(prevTickets => {
-        const updatedTickets = prevTickets.map(ticket => 
-          ticket._id === data.ticket._id ? { ...ticket, ...data.ticket, lastUpdated: new Date().toISOString() } : ticket
-        );
-        return updatedTickets;
-      });
-    };
-
-    const handleTicketAssigned = (data) => {
-      console.log('Handling ticket assigned:', data);
-      setTickets(prevTickets => {
-        const exists = prevTickets.some(ticket => ticket._id === data._id);
-        if (exists) {
-          return prevTickets.map(ticket => 
-            ticket._id === data._id ? { ...ticket, ...data, lastUpdated: new Date().toISOString() } : ticket
-          );
-        }
-        return [{ ...data, lastUpdated: new Date().toISOString() }, ...prevTickets];
-      });
-    };
-
-    const handleTicketStatusChange = (data) => {
-      console.log('Handling ticket status change:', data);
-      setTickets(prevTickets => {
-        const updatedTickets = prevTickets.map(ticket => 
-          ticket._id === data._id ? { ...ticket, status: data.status, lastUpdated: new Date().toISOString() } : ticket
-        );
-        return updatedTickets;
-      });
-    };
-
-    const handleNewTicket = (data) => {
-      console.log('Handling new ticket:', data);
-      setTickets(prevTickets => [{ ...data, lastUpdated: new Date().toISOString() }, ...prevTickets]);
-    };
-
-    // Subscribe to events
-    subscribeToEvent('ticket_updated', handleTicketUpdate);
-    subscribeToEvent('new_reply', handleNewReply);
-    subscribeToEvent('ticket_assigned', handleTicketAssigned);
-    subscribeToEvent('ticket_status_change', handleTicketStatusChange);
-    subscribeToEvent('new_ticket', handleNewTicket);
-
-    // Cleanup subscriptions
-    return () => {
-      unsubscribeAllFromComponent(COMPONENT_NAME);
-    };
-  }, [subscribeToEvent, unsubscribeAllFromComponent]);
+  }, []);
 
   const getStatusColor = (status) => {
     switch (status) {

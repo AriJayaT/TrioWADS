@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { FaArrowLeft, FaSpinner, FaPaperclip, FaTimes } from 'react-icons/fa';
 import ticketService from '../../../services/api/ticketService';
@@ -20,6 +20,7 @@ const TicketDetails = () => {
   const [ticketRating, setTicketRating] = useState(null);
   const [refreshCounter, setRefreshCounter] = useState(0);
   const { socket, subscribeToEvent, unsubscribeFromEvent } = useSocket();
+  const isMountedRef = useRef(true);
 
   // Function to explicitly refresh ticket data
   const refreshTicket = () => {
@@ -112,11 +113,15 @@ const TicketDetails = () => {
       }, 10000); // Refresh every 10 seconds
     }
     
-    // Subscribe to socket events
-    const handleNewReply = (data) => {
-      console.log('Handling new reply:', data);
-      if (data.ticket._id === ticketId) {
+    // Socket event handlers with useCallback
+    const handleNewReply = useCallback((data) => {
+      console.log('[TicketDetails] Handling new reply:', data);
+      if (!isMountedRef.current) return;
+      
+      if (data.ticket?._id === ticketId) {
         setTicket(prevTicket => {
+          if (!prevTicket) return null;
+          
           // Ensure we have the latest ticket data
           const updatedTicket = {
             ...prevTicket,
@@ -127,43 +132,67 @@ const TicketDetails = () => {
               {
                 ...data.reply,
                 sender: data.reply.sender || (data.reply.user?.role === 'customer' ? 'customer' : 'agent'),
-                senderName: data.reply.senderName || data.reply.user?.name
+                senderName: data.reply.senderName || data.reply.user?.name,
+                timestamp: new Date().toISOString()
               }
-            ]
+            ],
+            lastUpdated: new Date().toISOString()
           };
-          console.log('Updated ticket with new reply:', updatedTicket);
+          console.log('[TicketDetails] Updated ticket with new reply:', updatedTicket);
           return updatedTicket;
         });
       }
-    };
+    }, [ticketId]);
 
-    const handleTicketUpdate = (data) => {
-      console.log('Handling ticket update:', data);
-      if (data._id === ticketId) {
+    const handleTicketUpdate = useCallback((data) => {
+      console.log('[TicketDetails] Handling ticket update:', data);
+      if (!isMountedRef.current) return;
+      
+      if (data._id === ticketId || data.ticket?._id === ticketId) {
         setTicket(prevTicket => {
+          if (!prevTicket) return null;
+          
           const updatedTicket = {
             ...prevTicket,
-            ...data,
+            ...(data.ticket || data),
             // Preserve existing messages when updating ticket
-            messages: prevTicket.messages || []
+            messages: prevTicket.messages || [],
+            lastUpdated: new Date().toISOString()
           };
-          console.log('Updated ticket with new data:', updatedTicket);
+          console.log('[TicketDetails] Updated ticket with new data:', updatedTicket);
           return updatedTicket;
         });
       }
-    };
+    }, [ticketId]);
 
-    // Subscribe to events
-    subscribeToEvent('new_reply', handleNewReply);
-    subscribeToEvent('ticket_updated', handleTicketUpdate);
+    // Set up socket subscriptions
+    useEffect(() => {
+      if (!socket) {
+        console.log('[TicketDetails] Socket not available, skipping event handlers');
+        return;
+      }
 
-    // Cleanup subscriptions
-    return () => {
-      if (intervalId) clearInterval(intervalId);
-      unsubscribeFromEvent('new_reply', handleNewReply);
-      unsubscribeFromEvent('ticket_updated', handleTicketUpdate);
-    };
-  }, [ticketId, refreshCounter, subscribeToEvent, unsubscribeFromEvent]);
+      console.log('[TicketDetails] Setting up socket event handlers for ticket:', ticketId);
+
+      // Subscribe to events
+      subscribeToEvent('new_reply', handleNewReply, 'TicketDetails');
+      subscribeToEvent('ticket_updated', handleTicketUpdate, 'TicketDetails');
+
+      // Cleanup subscriptions
+      return () => {
+        console.log('[TicketDetails] Cleaning up socket event subscriptions for ticket:', ticketId);
+        unsubscribeFromEvent('new_reply', handleNewReply);
+        unsubscribeFromEvent('ticket_updated', handleTicketUpdate);
+      };
+    }, [socket, ticketId, subscribeToEvent, unsubscribeFromEvent, handleNewReply, handleTicketUpdate]);
+
+    // Cleanup on unmount
+    useEffect(() => {
+      return () => {
+        isMountedRef.current = false;
+      };
+    }, []);
+  }, [ticketId, refreshCounter, subscribeToEvent, unsubscribeFromEvent, handleNewReply, handleTicketUpdate]);
 
   const handleReply = async (e) => {
     e.preventDefault();

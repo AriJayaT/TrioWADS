@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 
 const notificationSchema = new mongoose.Schema({
-  user: {
+  recipient: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
@@ -12,6 +12,12 @@ const notificationSchema = new mongoose.Schema({
   },
   type: {
     type: String,
+    enum: ['ticket', 'message', 'system', 'assignment', 'ticket_created', 'ticket_assigned', 'ticket_closed', 'ticket_reply', 'ticket_escalated', 'new_ticket'],
+    required: true
+  },
+  role: {
+    type: String,
+    enum: ['admin', 'agent', 'customer'],
     required: true
   },
   read: {

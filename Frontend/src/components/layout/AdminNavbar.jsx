@@ -81,9 +81,7 @@ const AdminNavbar = ({
         </div>
         {/* Notification and User Profile */}
         <div className="flex items-center ml-auto mr-6 gap-4">
-          {/* Replace custom notification implementation with NotificationBell */}
           <NotificationBell />
-          
           {/* Profile with dropdown */}
           <div className="relative" ref={profileRef}>
             <div 

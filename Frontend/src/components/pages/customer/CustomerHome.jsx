@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { FaTicketAlt, FaClock, FaCheckCircle } from 'react-icons/fa';
 import ticketService from '../../../services/api/ticketService';
@@ -11,6 +11,7 @@ const CustomerHome = () => {
   const [error, setError] = useState(null);
   const { user } = useAuth();
   const { socket, subscribeToEvent, unsubscribeFromEvent } = useSocket();
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
     const fetchTickets = async () => {
@@ -27,38 +28,78 @@ const CustomerHome = () => {
     };
 
     fetchTickets();
+  }, []);
 
-    // Subscribe to socket events
-    const handleTicketUpdate = (data) => {
-      console.log('Handling ticket update:', data);
-      setTickets(prevTickets => {
-        const updatedTickets = prevTickets.map(ticket => 
-          ticket._id === data._id ? { ...ticket, ...data } : ticket
-        );
-        return updatedTickets;
+  // Socket event handlers with useCallback
+  const handleTicketUpdate = useCallback((data) => {
+    console.log('[CustomerHome] Handling ticket update:', data);
+    if (!isMountedRef.current) return;
+    
+    setTickets(prevTickets => {
+      const updatedTickets = prevTickets.map(ticket => {
+        if (ticket._id === data._id || ticket._id === data.ticket?._id) {
+          const updatedTicket = {
+            ...ticket,
+            ...(data.ticket || data),
+            lastUpdated: new Date().toISOString()
+          };
+          console.log('[CustomerHome] Updated ticket:', updatedTicket);
+          return updatedTicket;
+        }
+        return ticket;
       });
-    };
+      return updatedTickets;
+    });
+  }, []);
 
-    const handleNewReply = (data) => {
-      console.log('Handling new reply:', data);
-      setTickets(prevTickets => {
-        const updatedTickets = prevTickets.map(ticket => 
-          ticket._id === data.ticket._id ? { ...ticket, ...data.ticket } : ticket
-        );
-        return updatedTickets;
+  const handleNewReply = useCallback((data) => {
+    console.log('[CustomerHome] Handling new reply:', data);
+    if (!isMountedRef.current) return;
+    
+    setTickets(prevTickets => {
+      const updatedTickets = prevTickets.map(ticket => {
+        if (ticket._id === data.ticket?._id) {
+          const updatedTicket = {
+            ...ticket,
+            ...data.ticket,
+            lastUpdated: new Date().toISOString()
+          };
+          console.log('[CustomerHome] Updated ticket with new reply:', updatedTicket);
+          return updatedTicket;
+        }
+        return ticket;
       });
-    };
+      return updatedTickets;
+    });
+  }, []);
+
+  // Set up socket subscriptions
+  useEffect(() => {
+    if (!socket) {
+      console.log('[CustomerHome] Socket not available, skipping event handlers');
+      return;
+    }
+
+    console.log('[CustomerHome] Setting up socket event handlers');
 
     // Subscribe to events
-    subscribeToEvent('ticket_updated', handleTicketUpdate);
-    subscribeToEvent('new_reply', handleNewReply);
+    subscribeToEvent('ticket_updated', handleTicketUpdate, 'CustomerHome');
+    subscribeToEvent('new_reply', handleNewReply, 'CustomerHome');
 
     // Cleanup subscriptions
     return () => {
+      console.log('[CustomerHome] Cleaning up socket event subscriptions');
       unsubscribeFromEvent('ticket_updated', handleTicketUpdate);
       unsubscribeFromEvent('new_reply', handleNewReply);
     };
-  }, [subscribeToEvent, unsubscribeFromEvent]);
+  }, [socket, subscribeToEvent, unsubscribeFromEvent, handleTicketUpdate, handleNewReply]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // Calculate ticket metrics
   const totalTickets = tickets.length;

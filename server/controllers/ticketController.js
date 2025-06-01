@@ -86,6 +86,7 @@ const emitStatsUpdate = async (io) => {
  * @access Private (Customer/Admin/Agent)
  */
 export const createTicket = async (req, res) => {
+  console.log('[Backend] Entered createTicket controller');
   try {
     const { subject, description, category, subcategory, attachments } = req.body;
 
@@ -100,10 +101,12 @@ export const createTicket = async (req, res) => {
     };
 
     if (!validCategories.includes(category)) {
+      console.log('[Backend] Invalid category:', category);
       return res.status(400).json({ error: 'Invalid category' });
     }
 
     if (!validSubcategories[category]?.includes(subcategory)) {
+      console.log('[Backend] Invalid subcategory:', subcategory, 'for category:', category);
       return res.status(400).json({ error: 'Invalid subcategory for the selected category' });
     }
 
@@ -134,8 +137,11 @@ export const createTicket = async (req, res) => {
     // Determine the ticket priority
     const priority = priorityMap[subcategory] || 'medium';
 
-    // For tickets created by agents/admins, they can set the priority directly
-    const ticketPriority = req.user.role !== 'customer' && req.body.priority ? req.body.priority : priority;
+    // If an agent creates a ticket, they can immediately assign it
+    if (req.user.role !== 'customer' && req.body.assignedTo && !req.body.assignedTo) {
+      console.log('[Backend] Invalid assignedTo:', req.body.assignedTo);
+      return res.status(400).json({ error: 'Invalid assignedTo' });
+    }
 
     // Determine if this ticket should be assigned automatically
     let assignedTo = null;
@@ -156,10 +162,11 @@ export const createTicket = async (req, res) => {
       subcategory,
       user: req.user.id,
       attachments: attachments || [],
-      priority: ticketPriority,
+      priority,
       assignedTo,
       deadline
     });
+    console.log('[Backend] Ticket created:', ticket);
 
     // Populate user info
     await ticket.populate('user', 'name email');
@@ -168,24 +175,27 @@ export const createTicket = async (req, res) => {
     const admins = await User.find({ role: 'admin' });
     for (const admin of admins) {
       const notification = await Notification.create({
-        user: admin._id,
+        recipient: admin._id,
         message: `A new ticket "${ticket.subject}" has been created by ${ticket.user.name}.`,
         type: 'ticket_created',
+        role: 'admin',
         ticketId: ticket._id
       });
       emitToUser(admin._id, 'new_notification', notification);
     }
-    // Optionally, notify all agents as well (uncomment if needed)
-    // const agents = await User.find({ role: 'agent' });
-    // for (const agent of agents) {
-    //   const notification = await Notification.create({
-    //     user: agent._id,
-    //     message: `A new ticket "${ticket.subject}" has been created by ${ticket.user.name}.`,
-    //     type: 'ticket_created',
-    //     ticketId: ticket._id
-    //   });
-    //   emitToUser(agent._id, 'new_notification', notification);
-    // }
+    
+    // Notify all agents about new ticket
+    const agents = await User.find({ role: 'agent' });
+    for (const agent of agents) {
+      const notification = await Notification.create({
+        recipient: agent._id,
+        message: `A new ticket "${ticket.subject}" has been created by ${ticket.user.name}.`,
+        type: 'ticket_created',
+        role: 'agent',
+        ticketId: ticket._id
+      });
+      emitToUser(agent._id, 'new_notification', notification);
+    }
 
     // Emit socket events
     const io = req.app.get('io');
@@ -194,6 +204,8 @@ export const createTicket = async (req, res) => {
       emitToUser(ticket.user._id, 'new_ticket', ticket);
       // Notify admins
       emitToRole('admin', 'new_ticket', ticket);
+      // Notify all agents
+      emitToRole('agent', 'new_ticket', ticket);
       // Emit stats update
       await emitStatsUpdate(io);
     }
@@ -324,9 +336,10 @@ export const updateTicket = async (req, res) => {
     // Create notification for assignment
     if (assignedTo && assignedTo !== ticket.assignedTo?.toString()) {
       const notification = await Notification.create({
-        user: assignedTo,
+        recipient: assignedTo,
         message: `You have been assigned to ticket "${ticket.subject}"`,
         type: 'ticket_assigned',
+        role: 'agent',
         ticketId: ticket._id
       });
 
@@ -336,12 +349,37 @@ export const updateTicket = async (req, res) => {
 
       // Also notify the customer about the assignment
       const customerNotification = await Notification.create({
-        user: ticket.user,
+        recipient: ticket.user,
         message: `Your ticket "${ticket.subject}" has been assigned to a support agent.`,
         type: 'ticket_assigned',
+        role: 'customer',
         ticketId: ticket._id
       });
       emitToUser(ticket.user._id, 'new_notification', customerNotification);
+    }
+
+    // Handle ticket closure notification
+    if (status === 'closed' && ticket.status !== 'closed') {
+      const customerNotification = await Notification.create({
+        recipient: ticket.user,
+        message: `Your ticket "${ticket.subject}" has been closed.`,
+        type: 'ticket_closed',
+        role: 'customer',
+        ticketId: ticket._id
+      });
+      emitToUser(ticket.user._id, 'new_notification', customerNotification);
+
+      // Notify the assigned agent if different from the one who closed it
+      if (ticket.assignedTo && ticket.assignedTo.toString() !== req.user.id) {
+        const agentNotification = await Notification.create({
+          recipient: ticket.assignedTo,
+          message: `Ticket "${ticket.subject}" has been closed.`,
+          type: 'ticket_closed',
+          role: 'agent',
+          ticketId: ticket._id
+        });
+        emitToUser(ticket.assignedTo._id, 'new_notification', agentNotification);
+      }
     }
 
     // Emit socket events
@@ -467,6 +505,23 @@ export const addReply = async (req, res) => {
         ticketId: ticket._id
       });
       emitToUser(ticket.user._id, 'new_notification', notification);
+
+      // If the reply is from an agent, notify other agents who might be interested
+      if (req.user.role === 'agent') {
+        const otherAgents = await User.find({ 
+          role: 'agent',
+          _id: { $ne: req.user.id }
+        });
+        for (const agent of otherAgents) {
+          const agentNotification = await Notification.create({
+            user: agent._id,
+            message: `Agent ${req.user.name} replied to ticket "${ticket.subject}".`,
+            type: 'ticket_reply',
+            ticketId: ticket._id
+          });
+          emitToUser(agent._id, 'new_notification', agentNotification);
+        }
+      }
     }
 
     // Emit socket events
@@ -480,6 +535,10 @@ export const addReply = async (req, res) => {
       }
       // Notify admins
       emitToRole('admin', 'new_reply', { ticket, reply });
+      // Notify other agents if the reply is from an agent
+      if (req.user.role === 'agent') {
+        emitToRole('agent', 'new_reply', { ticket, reply });
+      }
     }
 
     res.status(201).json({
@@ -506,7 +565,8 @@ export const getTicketStats = async (req, res) => {
       }
     }
 
-    const { timeRange = 'this-week' } = req.query;
+    // Fix: Support both API and helper usage
+    const timeRange = req && req.query && req.query.timeRange ? req.query.timeRange : 'this-week';
     
     // Calculate date ranges
     const now = new Date();
