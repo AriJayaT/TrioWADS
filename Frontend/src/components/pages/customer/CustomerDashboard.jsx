@@ -1,0 +1,405 @@
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Link } from 'react-router-dom';
+import ticketService from '../../../services/api/ticketService';
+import { useAuth } from '../../../context/AuthContext';
+import { FaTicketAlt } from 'react-icons/fa';
+import { useSocket } from '../../../context/SocketContext';
+import NotificationBell from '../../common/NotificationBell';
+
+const COMPONENT_NAME = 'CustomerDashboard';
+
+const CustomerDashboard = () => {
+  const [tickets, setTickets] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('All Status');
+  const [notifications, setNotifications] = useState([]);
+  const { user } = useAuth();
+  const { socket, isConnected, subscribeToEvent, unsubscribeAllFromComponent } = useSocket();
+  const isMountedRef = useRef(true);
+
+  // Handle new notifications with useCallback
+  const handleNewNotification = useCallback((notification) => {
+    console.log(`[${COMPONENT_NAME}] New notification received:`, notification);
+    if (!isMountedRef.current) return;
+    setNotifications(prev => [notification, ...prev]);
+  }, []);
+
+  // Socket event handlers with useCallback
+  const handleTicketUpdate = useCallback((data) => {
+    console.log(`[${COMPONENT_NAME}] Handling ticket update:`, data);
+    if (!isMountedRef.current) return;
+    setTickets(prevTickets => {
+      const updatedTickets = prevTickets.map(ticket => {
+        const match = ticket._id === data._id || ticket._id === data.ticket?._id;
+        if (match) {
+          const newStatus = data.status || data.ticket?.status || ticket.status;
+          const updatedTicket = {
+            ...ticket,
+            ...(data.ticket || data),
+            status: newStatus,
+            lastUpdated: new Date().toISOString()
+          };
+          console.log(`[${COMPONENT_NAME}] Updated ticket (ticket_updated):`, updatedTicket);
+          return updatedTicket;
+        }
+        return ticket;
+      });
+      return updatedTickets;
+    });
+  }, []);
+
+  const handleNewReply = useCallback((data) => {
+    console.log(`[${COMPONENT_NAME}] Handling new reply:`, data);
+    if (!isMountedRef.current) return;
+    
+    setTickets(prevTickets => {
+      const updatedTickets = prevTickets.map(ticket => {
+        if (ticket._id === data.ticket?._id) {
+          const updatedTicket = {
+            ...ticket,
+            ...data.ticket,
+            lastUpdated: new Date().toISOString()
+          };
+          console.log(`[${COMPONENT_NAME}] Updated ticket with new reply:`, updatedTicket);
+          return updatedTicket;
+        }
+        return ticket;
+      });
+      return updatedTickets;
+    });
+  }, []);
+
+  const handleTicketAssigned = useCallback((data) => {
+    console.log(`[${COMPONENT_NAME}] Handling ticket assigned:`, data);
+    if (!isMountedRef.current) return;
+    
+    setTickets(prevTickets => {
+      const ticketId = data._id || data.ticket?._id;
+      const exists = prevTickets.some(ticket => ticket._id === ticketId);
+      
+      if (exists) {
+        const updatedTickets = prevTickets.map(ticket => {
+          if (ticket._id === ticketId) {
+            const updatedTicket = {
+              ...ticket,
+              ...(data.ticket || data),
+              lastUpdated: new Date().toISOString()
+            };
+            console.log(`[${COMPONENT_NAME}] Updated assigned ticket:`, updatedTicket);
+            return updatedTicket;
+          }
+          return ticket;
+        });
+        return updatedTickets;
+      }
+      
+      const newTicket = {
+        ...(data.ticket || data),
+        lastUpdated: new Date().toISOString()
+      };
+      console.log(`[${COMPONENT_NAME}] Added new assigned ticket:`, newTicket);
+      return [newTicket, ...prevTickets];
+    });
+  }, []);
+
+  const handleTicketStatusChange = useCallback((data) => {
+    console.log(`[${COMPONENT_NAME}] Handling ticket status change:`, data);
+    if (!isMountedRef.current) return;
+    setTickets(prevTickets => {
+      const updatedTickets = prevTickets.map(ticket => {
+        const match = ticket._id === data._id || ticket._id === data.ticket?._id;
+        if (match) {
+          const updatedTicket = {
+            ...ticket,
+            ...(data.ticket || data),
+            status: data.status || data.ticket?.status || ticket.status,
+            lastUpdated: new Date().toISOString()
+          };
+          console.log(`[${COMPONENT_NAME}] Updated ticket (ticket_status_change):`, updatedTicket);
+          return updatedTicket;
+        }
+        return ticket;
+      });
+      return updatedTickets;
+    });
+  }, []);
+
+  const handleNewTicket = useCallback((data) => {
+    console.log(`[${COMPONENT_NAME}] Handling new ticket:`, data);
+    if (!isMountedRef.current) return;
+    
+    const newTicket = {
+      ...(data.ticket || data),
+      lastUpdated: new Date().toISOString()
+    };
+    console.log(`[${COMPONENT_NAME}] Adding new ticket:`, newTicket);
+    setTickets(prevTickets => [newTicket, ...prevTickets]);
+  }, []);
+
+  // Set up socket subscriptions
+  useEffect(() => {
+    if (!socket || !isConnected) {
+      console.log(`[${COMPONENT_NAME}] Socket not connected, skipping event handlers`);
+      return;
+    }
+
+    console.log(`[${COMPONENT_NAME}] Setting up socket event handlers`);
+
+    // Subscribe to events with component identifier
+    subscribeToEvent('new_notification', handleNewNotification, COMPONENT_NAME);
+    subscribeToEvent('ticket_updated', handleTicketUpdate, COMPONENT_NAME);
+    subscribeToEvent('new_reply', handleNewReply, COMPONENT_NAME);
+    subscribeToEvent('ticket_assigned', handleTicketAssigned, COMPONENT_NAME);
+    subscribeToEvent('new_ticket', handleNewTicket, COMPONENT_NAME);
+
+    return () => {
+      console.log(`[${COMPONENT_NAME}] Cleaning up socket event subscriptions`);
+      unsubscribeAllFromComponent(COMPONENT_NAME);
+    };
+  }, [socket, isConnected, subscribeToEvent, unsubscribeAllFromComponent,
+      handleNewNotification, handleTicketUpdate, handleNewReply, 
+      handleTicketAssigned, handleNewTicket]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      unsubscribeAllFromComponent(COMPONENT_NAME);
+    };
+  }, [unsubscribeAllFromComponent]);
+
+  useEffect(() => {
+    const fetchTickets = async () => {
+      try {
+        setLoading(true);
+        const response = await ticketService.getTickets();
+        setTickets(response.tickets || []);
+      } catch (err) {
+        console.error('Error fetching tickets:', err);
+        setError('Failed to load tickets. Please try again later.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTickets();
+  }, []);
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'open':
+        return 'bg-green-100 text-green-800';
+      case 'closed':
+        return 'bg-gray-100 text-gray-800';
+      case 'in-progress':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'waiting-for-customer':
+        return 'bg-blue-100 text-blue-800';
+      case 'waiting-for-agent':
+        return 'bg-purple-100 text-purple-800';
+      case 'resolved':
+        return 'bg-green-100 text-green-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getPriorityColor = (priority) => {
+    switch (priority) {
+      case 'high':
+        return 'bg-pink-100 text-pink-800';
+      case 'medium':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'low':
+        return 'bg-green-100 text-green-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getCategoryColor = (category) => {
+    return 'bg-pink-100 text-pink-700';
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    const now = new Date();
+    const diff = Math.floor((now - date) / 1000); // Difference in seconds
+    
+    if (diff < 60) return 'Just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)} minutes ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} hours ago`;
+    if (diff < 604800) return `${Math.floor(diff / 86400)} days ago`;
+    
+    return date.toLocaleDateString();
+  };
+
+  const filteredTickets = tickets.filter(ticket => {
+    const matchesSearch = searchQuery === '' || 
+      ticket.ticketNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      ticket.subject?.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesStatus = statusFilter === 'All Status' || ticket.status === statusFilter;
+    
+    return matchesSearch && matchesStatus;
+  });
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-pink-500"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 p-4 rounded-lg">
+        <p className="text-red-600">{error}</p>
+        <button 
+          onClick={() => window.location.reload()}
+          className="mt-2 text-red-600 hover:text-red-700 underline"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">My Tickets</h1>
+        <div className="flex items-center gap-4">
+          <Link to="/customer/create-ticket">
+            <button className="bg-pink-500 hover:bg-pink-600 text-white px-4 py-2 rounded-lg text-sm">
+              New Ticket
+            </button>
+          </Link>
+        </div>
+      </div>
+
+      <div className="bg-white shadow rounded-lg p-6">
+        <div className="flex justify-between mb-6">
+          <div className="w-full max-w-2xl">
+            <input
+              type="text"
+              placeholder="Search tickets by ID, subject, or content..."
+              className="block w-full px-4 py-3 text-lg border-gray-300 rounded-lg shadow-sm focus:ring-pink-500 focus:border-pink-500"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <div>
+            <select
+              className="block w-full pl-3 pr-10 py-3 text-base border-gray-300 focus:outline-none focus:ring-pink-500 focus:border-pink-500 sm:text-sm rounded-lg"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option>All Status</option>
+              <option value="open">Open</option>
+              <option value="in-progress">In Progress</option>
+              <option value="waiting-for-customer">Reply Requested</option>
+              <option value="waiting-for-agent">Waiting for Agent</option>
+              <option value="resolved">Resolved</option>
+              <option value="closed">Closed</option>
+            </select>
+          </div>
+        </div>
+
+        {tickets.length === 0 ? (
+          <div className="text-center py-12">
+            <FaTicketAlt className="mx-auto h-12 w-12 text-gray-300" />
+            <h3 className="mt-2 text-lg font-medium text-gray-900">No tickets yet</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              You don't have any support tickets. Need help? Create your first ticket.
+            </p>
+            <div className="mt-6">
+              <Link
+                to="/customer/create-ticket"
+                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-pink-500 hover:bg-pink-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-pink-500"
+              >
+                Create New Ticket
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead>
+                <tr>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Ticket ID
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Subject
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Category
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Priority
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Last Update
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Action
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {filteredTickets.map((ticket) => (
+                  <tr key={ticket._id}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      {ticket.ticketNumber}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {ticket.subject}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getCategoryColor(ticket.category)}`}>
+                        {ticket.category}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(ticket.status)}`}>
+                        {ticket.status === 'waiting-for-customer' ? 'Reply Requested' : 
+                         ticket.status === 'waiting-for-agent' ? 'Waiting for Agent' :
+                         ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1).replace(/-/g, ' ')}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPriorityColor(ticket.priority)}`}>
+                        {ticket.priority.charAt(0).toUpperCase() + ticket.priority.slice(1)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {formatDate(ticket.updatedAt)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center text-sm">
+                      <Link 
+                        to={`/customer/ticket/${ticket._id || ticket.id || ''}`}
+                        className="text-pink-500 hover:text-pink-700"
+                      >
+                        View Details
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </>
+  );
+};
+
+export default CustomerDashboard; 
