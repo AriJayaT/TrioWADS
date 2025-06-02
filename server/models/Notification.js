@@ -12,7 +12,7 @@ const notificationSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['ticket', 'message', 'system', 'assignment', 'ticket_created', 'ticket_assigned', 'ticket_closed', 'ticket_reply', 'ticket_escalated', 'new_ticket'],
+    enum: ['ticket', 'message', 'system', 'assignment', 'ticket_created', 'ticket_assigned', 'ticket_closed', 'ticket_reply', 'ticket_escalated', 'new_ticket', 'ticket_reminder'],
     required: true
   },
   role: {
