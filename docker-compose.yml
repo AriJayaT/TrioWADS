@@ -19,7 +19,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
 
     ports:
-      - "3006:3005"
+      - "3006:3006"
 
   frontend:
     image: spacebone/yiphelp-frontend:latest
@@ -27,4 +27,4 @@ services:
     depends_on:
       - backend
     ports:
-      - "3001:3001"
+      - "3005:3005"
