@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { FaBell, FaTachometerAlt, FaUsers, FaChartBar, FaSignOutAlt, FaUser, FaClock, FaBook } from 'react-icons/fa';
 import { FaCheckCircle, FaRegClock, FaStar, FaTicketAlt, FaPlus } from 'react-icons/fa';
 import { Link, useNavigate } from 'react-router-dom';
@@ -13,7 +13,7 @@ const COMPONENT_NAME = 'AgentDashboard';
 
 const AgentDashboard = () => {
   const navigate = useNavigate();
-  const { socket, isConnected, subscribeToEvent, unsubscribeFromEvent, unsubscribeAllFromComponent } = useSocket();
+  const { socket, isConnected } = useSocket();
   // State for adding a new task
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [newTask, setNewTask] = useState({ title: '', priority: 'Normal', dueDate: '' });
@@ -42,32 +42,39 @@ const AgentDashboard = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All Status');
 
-  // Handler for new notifications
-  const handleNewNotification = (notification) => {
-    console.log(`[${COMPONENT_NAME}] New notification received:`, notification);
-    setNotifications(prev => [notification, ...prev]);
-  };
+  // Add debouncing for fetchDashboardData to prevent race conditions
+  const debounceTimeoutRef = useRef(null);
 
-  // Set up socket subscriptions
+  // Debounced version of fetchDashboardData
+  const debouncedFetchDashboardData = useCallback(() => {
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+    
+    debounceTimeoutRef.current = setTimeout(() => {
+      fetchDashboardData();
+    }, 500); // 500ms debounce
+  }, []);
+
+  // Combined socket event setup
   useEffect(() => {
-    if (!socket || !isConnected) return;
+    if (!socket || !isConnected) {
+      console.log(`[${COMPONENT_NAME}] Socket not connected, skipping event handlers`);
+      return;
+    }
 
     console.log(`[${COMPONENT_NAME}] Setting up socket event handlers`);
-    subscribeToEvent('new_notification', handleNewNotification, COMPONENT_NAME);
 
-    return () => {
-      console.log(`[${COMPONENT_NAME}] Cleaning up socket event subscriptions`);
-      unsubscribeAllFromComponent(COMPONENT_NAME);
+    // Handler for new notifications
+    const handleNewNotification = (notification) => {
+      console.log(`[${COMPONENT_NAME}] New notification received:`, notification);
+      setNotifications(prev => [notification, ...prev]);
     };
-  }, [socket, isConnected, subscribeToEvent, unsubscribeAllFromComponent]);
 
-  useEffect(() => {
-    fetchDashboardData();
-    fetchNotifs();
-
-    // Subscribe to socket events
+    // Handler for ticket updates
     const handleTicketUpdate = (data) => {
       console.log(`[${COMPONENT_NAME}] Handling ticket update:`, data);
+      
       // Update active tickets if the updated ticket is in the list
       setActiveTickets(prevTickets => {
         const updatedTickets = prevTickets.map(ticket => 
@@ -77,100 +84,105 @@ const AgentDashboard = () => {
                    data.status === 'in-progress' ? 'In progress' : 'Pending'
           } : ticket
         );
+        console.log(`[${COMPONENT_NAME}] Active tickets updated from ticket_updated event`);
         return updatedTickets;
       });
       
-      // Refresh dashboard data to update metrics
-      fetchDashboardData();
+      // Use debounced fetch to prevent conflicts
+      debouncedFetchDashboardData();
     };
 
+    // Handler for ticket assignment
     const handleTicketAssigned = (data) => {
+      const currentUserId = user?._id;
+      
       console.log(`[${COMPONENT_NAME}] Handling ticket assigned:`, {
         ticketId: data?._id,
         assignedTo: data?.assignedTo,
-        currentUserId: user?._id
-      });
-      
-      // Check if this ticket is assigned to the current agent with more robust checking
-      const assignedToId = data?.assignedTo?._id || data?.assignedTo;
-      const isAssignedToMe = assignedToId && 
-        (assignedToId === user?._id || assignedToId.toString() === user?._id?.toString());
-      
-      console.log(`[${COMPONENT_NAME}] Assignment verification:`, {
-        assignedToId,
-        currentUserId: user?._id,
-        isAssignedToMe,
+        currentUserId,
         ticketSubject: data?.subject
       });
       
+      // Check if this ticket is assigned to the current agent
+      const assignedToId = data?.assignedTo?._id || data?.assignedTo;
+      const isAssignedToMe = assignedToId && currentUserId &&
+        (assignedToId === currentUserId || assignedToId.toString() === currentUserId.toString());
+      
       if (isAssignedToMe) {
-        console.log(`[${COMPONENT_NAME}] Ticket assigned to current agent - updating dashboard`);
+        console.log(`[${COMPONENT_NAME}] ✅ Ticket assigned to current agent - updating dashboard`);
         
-        // Update active tickets
+        // Update active tickets immediately with optimistic update
         setActiveTickets(prevTickets => {
           const exists = prevTickets.some(ticket => ticket.id === data._id);
           if (exists) {
-            console.log(`[${COMPONENT_NAME}] Updating existing active ticket`);
             return prevTickets.map(ticket => 
               ticket.id === data._id ? {
                 ...ticket,
                 status: data.status === 'open' ? 'Awaiting your response' : 
-                       data.status === 'in-progress' ? 'In progress' : 'Pending'
+                       data.status === 'in-progress' ? 'In progress' : 'Pending',
+                customer: data.user?.name || ticket.customer
               } : ticket
             );
           }
           
-          console.log(`[${COMPONENT_NAME}] Adding new active ticket to dashboard`);
-          return [{
+          const newTicket = {
             id: data._id,
             ticketNumber: data.ticketNumber,
             subject: data.subject,
             customer: data.user?.name || 'Customer',
             status: data.status === 'open' ? 'Awaiting your response' : 
                    data.status === 'in-progress' ? 'In progress' : 'Pending'
-          }, ...prevTickets];
+          };
+          return [newTicket, ...prevTickets];
         });
         
-        // Update all tickets list
-        setTickets(prevTickets => {
-          const exists = prevTickets.some(ticket => ticket._id === data._id);
-          if (exists) {
-            return prevTickets.map(ticket => 
-              ticket._id === data._id ? { ...ticket, ...data } : ticket
-            );
-          }
-          return [data, ...prevTickets];
-        });
-        
-        console.log(`[${COMPONENT_NAME}] Refreshing dashboard data after assignment`);
+        // Refresh dashboard data after a short delay
+        setTimeout(() => {
+          fetchDashboardData();
+        }, 1000);
       } else {
-        console.log(`[${COMPONENT_NAME}] Ticket assigned to different agent, not updating dashboard`);
+        // Still refresh metrics in case this affects overall stats
+        debouncedFetchDashboardData();
       }
-      
-      // Always refresh dashboard data to update metrics
-      fetchDashboardData();
     };
 
+    // Handler for stats updates
     const handleStatsUpdate = (stats) => {
       console.log(`[${COMPONENT_NAME}] Handling stats update:`, stats);
-      // Refresh dashboard data to get latest agent-specific stats
-      fetchDashboardData();
+      debouncedFetchDashboardData();
     };
 
-    // Subscribe to events with component identifier
-    subscribeToEvent('stats_updated', handleStatsUpdate, COMPONENT_NAME);
-    subscribeToEvent('ticket_updated', handleTicketUpdate, COMPONENT_NAME);
-    subscribeToEvent('ticket_assigned', handleTicketAssigned, COMPONENT_NAME);
+    // Add event listeners directly to socket
+    socket.on('new_notification', handleNewNotification);
+    socket.on('ticket_updated', handleTicketUpdate);
+    socket.on('ticket_assigned', handleTicketAssigned);
+    socket.on('stats_updated', handleStatsUpdate);
 
-    // Cleanup subscriptions
+    console.log(`[${COMPONENT_NAME}] ✅ Socket event handlers registered`);
+
+    // Cleanup function
     return () => {
-      unsubscribeFromEvent('stats_updated', handleStatsUpdate, COMPONENT_NAME);
-      unsubscribeFromEvent('ticket_updated', handleTicketUpdate, COMPONENT_NAME);
-      unsubscribeFromEvent('ticket_assigned', handleTicketAssigned, COMPONENT_NAME);
+      console.log('[AgentDashboard] Cleaning up socket event subscriptions');
+      try {
+        if (socket) {
+          socket.off('new_notification', handleNewNotification);
+          socket.off('ticket_updated', handleTicketUpdate);
+          socket.off('ticket_assigned', handleTicketAssigned);
+          socket.off('stats_updated', handleStatsUpdate);
+        }
+      } catch (error) {
+        console.error('[AgentDashboard] Error cleaning up socket events:', error);
+      }
     };
-  }, [subscribeToEvent, unsubscribeFromEvent, user]);
+  }, [socket, isConnected, user?._id, debouncedFetchDashboardData]);
+
+  // Separate useEffect for initial data loading
+  useEffect(() => {
+    fetchDashboardData();
+    fetchNotifs();
+  }, []); // Only run once on mount
   
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null); // Clear any previous errors
@@ -285,7 +297,7 @@ const AgentDashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?._id]);
   
   const formatTimeAgo = (dateString) => {
     if (!dateString) return 'N/A';
@@ -413,6 +425,16 @@ const AgentDashboard = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Add this useEffect for debugging
+  useEffect(() => {
+    console.log(`[${COMPONENT_NAME}] Socket status:`, {
+      hasSocket: !!socket,
+      isConnected,
+      userId: user?._id,
+      userRole: user?.role
+    });
+  }, [socket, isConnected, user]);
 
   if (loading) {
     return (

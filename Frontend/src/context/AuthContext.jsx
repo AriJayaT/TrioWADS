@@ -26,15 +26,15 @@ export const AuthProvider = ({ children }) => {
           const storedRole = localStorage.getItem('userRole');
           
           if (storedUser) {
-            // Ensure user has both _id and id fields for compatibility
-            if (storedUser._id && !storedUser.id) {
-              storedUser.id = storedUser._id;
-            } else if (storedUser.id && !storedUser._id) {
-              storedUser._id = storedUser.id;
-            }
+            // Ensure user has both _id and id fields for compatibility with socket
+            const normalizedUser = {
+              ...storedUser,
+              _id: storedUser._id || storedUser.id,
+              id: storedUser.id || storedUser._id
+            };
             
             // Validate that stored role matches user role
-            if (storedRole !== storedUser.role) {
+            if (storedRole && storedRole !== normalizedUser.role) {
               console.warn('Stored role does not match user role, clearing auth data');
               authService.logout();
               setUser(null);
@@ -43,8 +43,8 @@ export const AuthProvider = ({ children }) => {
               return;
             }
             
-            console.log('Stored user from localStorage:', storedUser);
-            setUser(storedUser);
+            console.log('Stored user from localStorage:', normalizedUser);
+            setUser(normalizedUser);
             setIsAuthenticated(true);
           }
           
@@ -53,15 +53,15 @@ export const AuthProvider = ({ children }) => {
             const serverUser = await authService.getCurrentUser();
             console.log('User from server:', serverUser);
             
-            // Ensure user has both _id and id fields for compatibility
-            if (serverUser._id && !serverUser.id) {
-              serverUser.id = serverUser._id;
-            } else if (serverUser.id && !serverUser._id) {
-              serverUser._id = serverUser.id;
-            }
+            // Ensure user has both _id and id fields for compatibility with socket
+            const normalizedServerUser = {
+              ...serverUser,
+              _id: serverUser._id || serverUser.id,
+              id: serverUser.id || serverUser._id
+            };
             
             // Validate that server role matches stored role
-            if (serverUser.role !== storedRole) {
+            if (storedRole && normalizedServerUser.role !== storedRole) {
               console.warn('Server role does not match stored role, clearing auth data');
               authService.logout();
               setUser(null);
@@ -70,11 +70,12 @@ export const AuthProvider = ({ children }) => {
               return;
             }
             
-            setUser(serverUser);
+            setUser(normalizedServerUser);
             setIsAuthenticated(true);
             
-            // Update localStorage with the latest user data
-            localStorage.setItem('user', JSON.stringify(serverUser));
+            // Update localStorage with the latest normalized user data
+            localStorage.setItem('user', JSON.stringify(normalizedServerUser));
+            localStorage.setItem('userRole', normalizedServerUser.role);
           } catch (err) {
             console.error('Error validating stored auth token:', err);
             // If token validation fails (e.g., 401), ensure state is cleared
@@ -130,31 +131,31 @@ export const AuthProvider = ({ children }) => {
       }
 
       if (user && token) {
-        // Ensure user has both _id and id fields for compatibility
-        if (user._id && !user.id) {
-          user.id = user._id;
-        } else if (user.id && !user._id) {
-          user._id = user.id;
-        }
+        // Ensure user has both _id and id fields for compatibility with socket
+        const normalizedUser = {
+          ...user,
+          _id: user._id || user.id,
+          id: user.id || user._id
+        };
 
         // Store the user's role in localStorage (ensure it matches the user object's role)
-        if (user.role) {
-             localStorage.setItem('userRole', user.role);
+        if (normalizedUser.role) {
+             localStorage.setItem('userRole', normalizedUser.role);
         } else {
              // If role is missing in user object, attempt to get it from localStorage
              // This might happen with older stored data, but newer flows should provide it.
              const storedRole = localStorage.getItem('userRole');
-             if (storedRole) user.role = storedRole;
+             if (storedRole) normalizedUser.role = storedRole;
         }
 
         // Store the token and user in localStorage if not already done by authService
         // This provides a fallback in case the authService function didn't store them
         localStorage.setItem('authToken', token);
-        localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(normalizedUser));
 
-        setUser(user);
+        setUser(normalizedUser);
         setIsAuthenticated(true);
-        return user;
+        return normalizedUser;
       }
        else { // Should not happen if authService functions work correctly
            throw new Error('Login failed: Missing user or token in result.');

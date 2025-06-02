@@ -597,6 +597,124 @@ router.post('/debug/force-assign/:ticketId/:agentId', protect, authorize('admin'
   }
 });
 
+/**
+ * Comprehensive debug route to test socket assignment flow
+ */
+router.post('/debug/test-assignment/:ticketId/:agentId', protect, authorize('admin'), async (req, res) => {
+  try {
+    const { ticketId, agentId } = req.params;
+    const { connectedUsers, emitToUser, emitToRole } = await import('../index.js');
+    
+    console.log(`\n=== ASSIGNMENT DEBUG TEST ===`);
+    console.log(`Ticket ID: ${ticketId}`);
+    console.log(`Agent ID: ${agentId}`);
+    console.log(`Agent ID type: ${typeof agentId}`);
+    
+    // Check connected users
+    console.log(`\n--- Connected Users ---`);
+    const connections = Array.from(connectedUsers.entries());
+    console.log(`Total connected: ${connections.length}`);
+    connections.forEach(([userId, info]) => {
+      console.log(`User ${userId} (${typeof userId}): ${info.role} - Socket ${info.socketId}`);
+    });
+    
+    // Check if target agent is connected
+    const agentConnected = connectedUsers.has(agentId);
+    const agentConnectedAsString = connectedUsers.has(agentId.toString());
+    console.log(`\n--- Agent Connection Status ---`);
+    console.log(`Agent ${agentId} connected (direct): ${agentConnected}`);
+    console.log(`Agent ${agentId} connected (as string): ${agentConnectedAsString}`);
+    
+    // Get ticket and agent info
+    const ticket = await Ticket.findById(ticketId)
+      .populate('user', 'name email')
+      .populate('assignedTo', 'name email agentType role');
+      
+    const agent = await User.findById(agentId);
+    
+    if (!ticket) {
+      return res.status(404).json({ error: 'Ticket not found' });
+    }
+    
+    if (!agent) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+    
+    console.log(`\n--- Ticket & Agent Info ---`);
+    console.log(`Ticket: ${ticket.subject}`);
+    console.log(`Agent: ${agent.name} (${agent.role})`);
+    
+    // Test socket emissions with detailed logging
+    console.log(`\n--- Testing Socket Emissions ---`);
+    
+    console.log(`1. Testing emitToUser with original agentId: ${agentId}`);
+    emitToUser(agentId, 'test_assignment_1', { 
+      message: 'Test 1: Original agentId',
+      ticketId,
+      agentId,
+      timestamp: new Date().toISOString()
+    });
+    
+    console.log(`2. Testing emitToUser with agentId.toString(): ${agentId.toString()}`);
+    emitToUser(agentId.toString(), 'test_assignment_2', { 
+      message: 'Test 2: agentId.toString()',
+      ticketId,
+      agentId: agentId.toString(),
+      timestamp: new Date().toISOString()
+    });
+    
+    console.log(`3. Testing emitToRole for agents`);
+    emitToRole('agent', 'test_assignment_3', { 
+      message: 'Test 3: Role-based emission',
+      ticketId,
+      agentId,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Simulate actual assignment events
+    console.log(`\n--- Simulating Real Assignment Events ---`);
+    
+    const testNotification = {
+      recipient: agentId,
+      message: `[TEST] You have been assigned to ticket "${ticket.subject}"`,
+      type: 'ticket_assigned',
+      role: 'agent',
+      ticketId: ticket._id,
+      timestamp: new Date()
+    };
+    
+    emitToUser(agentId, 'ticket_assigned', ticket);
+    emitToUser(agentId, 'ticket_updated', ticket);
+    emitToUser(agentId, 'new_notification', testNotification);
+    emitToRole('agent', 'ticket_assigned', ticket);
+    emitToRole('admin', 'ticket_assigned', ticket);
+    
+    console.log(`=== DEBUG TEST COMPLETE ===\n`);
+    
+    res.json({ 
+      success: true, 
+      message: 'Assignment debug test completed - check server logs',
+      data: {
+        ticketId,
+        agentId,
+        agentIdType: typeof agentId,
+        agentConnected,
+        agentConnectedAsString,
+        totalConnections: connections.length,
+        connectedUsers: connections.map(([userId, info]) => ({
+          userId,
+          userIdType: typeof userId,
+          role: info.role,
+          socketId: info.socketId
+        }))
+      }
+    });
+  } catch (error) {
+    console.error('Debug assignment test error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Test endpoint to create sample data for metrics testing (remove in production)
 router.post('/test/create-sample-data', protect, authorize('admin'), async (req, res) => {
   try {

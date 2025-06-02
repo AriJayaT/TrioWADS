@@ -10,7 +10,7 @@ const CustomerHome = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const { user } = useAuth();
-  const { socket, subscribeToEvent, unsubscribeFromEvent } = useSocket();
+  const { socket, isConnected } = useSocket();
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -75,24 +75,30 @@ const CustomerHome = () => {
 
   // Set up socket subscriptions
   useEffect(() => {
-    if (!socket) {
-      console.log('[CustomerHome] Socket not available, skipping event handlers');
+    if (!socket || !isConnected) {
+      console.log('[CustomerHome] Socket not connected, skipping event handlers');
       return;
     }
 
     console.log('[CustomerHome] Setting up socket event handlers');
 
     // Subscribe to events
-    subscribeToEvent('ticket_updated', handleTicketUpdate, 'CustomerHome');
-    subscribeToEvent('new_reply', handleNewReply, 'CustomerHome');
+    socket.on('ticket_updated', handleTicketUpdate);
+    socket.on('new_reply', handleNewReply);
 
     // Cleanup subscriptions
     return () => {
       console.log('[CustomerHome] Cleaning up socket event subscriptions');
-      unsubscribeFromEvent('ticket_updated', handleTicketUpdate);
-      unsubscribeFromEvent('new_reply', handleNewReply);
+      try {
+        if (socket) {
+          socket.off('ticket_updated', handleTicketUpdate);
+          socket.off('new_reply', handleNewReply);
+        }
+      } catch (error) {
+        console.error('[CustomerHome] Error cleaning up socket events:', error);
+      }
     };
-  }, [socket, subscribeToEvent, unsubscribeFromEvent, handleTicketUpdate, handleNewReply]);
+  }, [socket, isConnected, handleTicketUpdate, handleNewReply]);
 
   // Cleanup on unmount
   useEffect(() => {

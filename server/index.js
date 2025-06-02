@@ -142,234 +142,112 @@ app.use((err, req, res, next) => {
 
 const server = http.createServer(app);
 
-// --- SOCKET.IO SETUP ---
+// --- SIMPLIFIED SOCKET.IO SETUP ---
 import { Server as SocketIOServer } from 'socket.io';
+
 const io = new SocketIOServer(server, {
   cors: {
     origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    credentials: true
-  },
-  pingTimeout: 120000,    // 2 minutes (increased from 60 seconds)
-  pingInterval: 30000,    // 30 seconds (increased from 25 seconds)
-  transports: ['websocket', 'polling'],
-  allowEIO3: true,
-  connectTimeout: 60000,  // 1 minute (increased from 45 seconds)
-  maxHttpBufferSize: 1e8,
-  allowUpgrades: true,
-  perMessageDeflate: false,
-  upgradeTimeout: 30000,  // 30 seconds for transport upgrades
-  allowRequest: (req, callback) => {
-    // Accept all requests (you can add more validation here if needed)
-    callback(null, true);
+    methods: ['GET', 'POST']
   }
 });
 
-// Store connected users with their roles and socket IDs - enhanced with caching
+// Simple connected users map - just store user ID to socket ID mapping
 const connectedUsers = new Map();
-const socketUserCache = new Map(); // Cache for socket user data
-const SOCKET_CACHE_TTL = 15 * 60 * 1000; // 15 minutes cache for socket users
 
-// Clean expired socket cache periodically
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, value] of socketUserCache.entries()) {
-    if (now > value.expiresAt) {
-      socketUserCache.delete(key);
-    }
-  }
-}, 10 * 60 * 1000); // Clean every 10 minutes
-
-// Export for debugging purposes
+// Export connectedUsers for debugging purposes
 export { connectedUsers };
 
 // Attach io to app for access in controllers
 app.set('io', io);
 
-// Helper functions for emitting events
+// Simple helper functions for emitting events
 export const emitToUser = (userId, event, data) => {
-  console.log(`[Socket] Emitting ${event} to user ${userId}:`, {
-    ticketId: data?._id || 'no-id',
-    ticketSubject: data?.subject || 'no-subject',
-    assignedTo: data?.assignedTo?._id || data?.assignedTo || 'no-assignment'
-  });
+  // Ensure userId is always a string for consistent lookup
+  const userIdString = userId.toString();
+  console.log(`[Socket] Emitting ${event} to user ${userIdString}`);
   
-  const userInfo = connectedUsers.get(userId);
-  if (userInfo) {
-    console.log(`[Socket] User ${userId} found with socket ${userInfo.socketId}, role: ${userInfo.role}`);
-    
-    // Emit to specific socket
-    const emitResult1 = io.to(userInfo.socketId).emit(event, data);
-    
-    // Also emit to user room for redundancy
-    const emitResult2 = io.to(`user_${userId}`).emit(event, data);
-    
-    console.log(`[Socket] Event ${event} emitted successfully to user ${userId} via socket and room`);
-    
-    // Verify the socket is still connected
-    const socketInstance = io.sockets.sockets.get(userInfo.socketId);
-    if (!socketInstance || !socketInstance.connected) {
-      console.warn(`[Socket] Socket ${userInfo.socketId} for user ${userId} is disconnected, removing from connected users`);
-      connectedUsers.delete(userId);
-    }
+  const userInfo = connectedUsers.get(userIdString);
+  if (userInfo && userInfo.socketId) {
+    io.to(userInfo.socketId).emit(event, data);
+    console.log(`[Socket] Event ${event} sent to user ${userIdString} via socket ${userInfo.socketId}`);
   } else {
-    console.log(`[Socket] User ${userId} not found in connected users map, trying room emission`);
-    
-    // Try emitting to user room anyway in case they're connected but not in the map
-    io.to(`user_${userId}`).emit(event, data);
-    console.log(`[Socket] Event ${event} emitted to user room user_${userId} as fallback`);
-    
-    // Also try to find the user by searching all connected sockets
-    const allSockets = Array.from(io.sockets.sockets.values());
-    const userSocket = allSockets.find(socket => socket.userId === userId);
-    if (userSocket && userSocket.connected) {
-      console.log(`[Socket] Found disconnected user ${userId} on socket ${userSocket.id}, re-adding to map`);
-      connectedUsers.set(userId, {
-        socketId: userSocket.id,
-        role: userSocket.userInfo?.role || 'unknown',
-        agentType: userSocket.userInfo?.agentType || 'unknown',
-        lastSeen: Date.now()
-      });
-      userSocket.emit(event, data);
-    }
+    console.log(`[Socket] User ${userIdString} not connected`);
   }
 };
 
 export const emitToRole = (role, event, data) => {
-  console.log(`[Socket] Emitting ${event} to role ${role}:`, {
-    ticketId: data?._id || 'no-id',
-    connectedUsersInRole: Array.from(connectedUsers.entries())
-      .filter(([userId, userInfo]) => userInfo.role === role).length
-  });
-  
-  // Emit to role room
+  console.log(`[Socket] Emitting ${event} to role ${role}`);
   io.to(`role_${role}`).emit(event, data);
-  
-  // Also emit directly to each user of this role for redundancy
-  const usersInRole = Array.from(connectedUsers.entries())
-    .filter(([userId, userInfo]) => userInfo.role === role);
-  
-  console.log(`[Socket] Found ${usersInRole.length} users in role ${role}`);
-  
-  usersInRole.forEach(([userId, userInfo]) => {
-    io.to(userInfo.socketId).emit(event, data);
-  });
 };
 
 export const emitToAgentType = (agentType, event, data) => {
+  console.log(`[Socket] Emitting ${event} to agent type ${agentType}`);
   io.to(`agent_type_${agentType}`).emit(event, data);
 };
 
 export const broadcastToAll = (event, data) => {
+  console.log(`[Socket] Broadcasting ${event} to all users`);
   io.emit(event, data);
 };
 
+// Socket.IO connection handling
 io.on('connection', (socket) => {
-  console.log('[Socket] New connection:', socket.id, 'from', socket.handshake.address);
-  
-  // Log connection details
-  console.log('[Socket] Connection transport:', socket.conn.transport.name);
-  console.log('[Socket] Connection upgraded:', socket.conn.upgraded);
-  
-  // Handle transport upgrade
-  socket.conn.on('upgrade', () => {
-    console.log('[Socket] Connection upgraded to:', socket.conn.transport.name);
-  });
-  
-  // Handle ping/pong for debugging
-  socket.on('ping', () => {
-    console.log('[Socket] Ping from client:', socket.id);
-  });
-  
-  socket.on('pong', () => {
-    console.log('[Socket] Pong from client:', socket.id);
-  });
-  
+  console.log(`[Socket] New connection: ${socket.id}`);
+
   // Handle user authentication
   socket.on('authenticate', async (userId) => {
     try {
-      console.log('[Socket] Authenticating user:', userId, 'on socket:', socket.id);
+      console.log(`[Socket] Authenticating user ${userId} on socket ${socket.id}`);
       
-      // Store the user ID in the socket
-      socket.userId = userId;
-      
-      // Check cache first to reduce database queries
-      let user;
-      const cached = socketUserCache.get(userId);
-      
-      if (cached && Date.now() < cached.expiresAt) {
-        // Use cached user data
-        user = cached.user;
-        console.log('[Socket] Using cached user data for socket auth:', userId);
-      } else {
-        // Get user details including role from database
-        user = await User.findById(userId);
+      // Get user from database
+      const user = await User.findById(userId);
       if (!user) {
-        console.error('[Socket] User not found:', userId);
+        console.error(`[Socket] User ${userId} not found`);
         socket.emit('unauthorized', { message: 'User not found' });
-        socket.disconnect();
         return;
-        }
-        
-        // Cache the user data for socket operations
-        socketUserCache.set(userId, {
-          user: user,
-          expiresAt: Date.now() + SOCKET_CACHE_TTL
-        });
-        console.log('[Socket] Cached user data for socket operations:', userId);
       }
-      
-      // Store user info in socket for later use
-      socket.userInfo = {
-        role: user.role,
-        agentType: user.agentType
-      };
-      
-      // Store user info in connectedUsers map
-      connectedUsers.set(userId, {
+
+      // Store user mapping with complete info - ensure userId is always a string
+      const userIdString = userId.toString();
+      const userInfo = {
         socketId: socket.id,
         role: user.role,
         agentType: user.agentType,
         lastSeen: Date.now()
-      });
-      
-      // Join user-specific room for real-time notifications
-      socket.join(`user_${userId}`);
+      };
+      connectedUsers.set(userIdString, userInfo);
+      socket.userId = userIdString;
+      socket.userRole = user.role;
+
+      // Join user-specific room
+      socket.join(`user_${userIdString}`);
       
       // Join role-specific room
       socket.join(`role_${user.role}`);
-      if (user.role === 'agent') {
-        console.log(`[Socket] Agent ${userId} joined role_agent room`);
-      }
-      // If user is an agent, join agent type specific room
-      if (user.role === 'agent') {
-        socket.join(`agent_type_${user.agentType}`);
-        console.log(`[Socket] Agent ${userId} joined agent_type_${user.agentType} room`);
-      }
       
-      console.log(`[Socket] User ${userId} (${user.role}) authenticated successfully with socket ${socket.id}`);
+      // If agent, also join agent type room
+      if (user.role === 'agent' && user.agentType) {
+        socket.join(`agent_type_${user.agentType}`);
+      }
+
+      console.log(`[Socket] User ${userIdString} (${user.role}) authenticated and joined rooms`);
       socket.emit('authenticated', { role: user.role });
+
     } catch (error) {
-      console.error('[Socket] Authentication error:', error);
-      socket.emit('unauthorized', { message: error.message });
-      socket.disconnect();
+      console.error(`[Socket] Authentication error for user ${userId}:`, error);
+      socket.emit('unauthorized', { message: 'Authentication failed' });
     }
   });
 
   // Handle disconnection
-  socket.on('disconnect', (reason) => {
+  socket.on('disconnect', () => {
     if (socket.userId) {
       connectedUsers.delete(socket.userId);
-      // Clear socket-specific cache on disconnect to ensure fresh data on reconnect
-      socketUserCache.delete(socket.userId);
-      console.log(`[Socket] User ${socket.userId} disconnected from socket ${socket.id}, reason: ${reason} - cache cleared`);
+      console.log(`[Socket] User ${socket.userId} disconnected`);
+    } else {
+      console.log(`[Socket] Socket ${socket.id} disconnected`);
     }
-    console.log('[Socket] Socket disconnected:', socket.id, 'reason:', reason);
-  });
-  
-  // Handle connection errors
-  socket.on('error', (error) => {
-    console.error('[Socket] Socket error for', socket.id, ':', error);
   });
 });
 
@@ -377,7 +255,7 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
-  console.log(`Socket.IO server is running on ws://localhost:${PORT}`);
+  console.log(`Socket.IO server is running`);
 });
 
 // Handle server errors

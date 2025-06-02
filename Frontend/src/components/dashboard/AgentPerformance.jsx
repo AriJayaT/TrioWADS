@@ -5,7 +5,7 @@ import ticketService from '../../services/api/ticketService';
 const AgentPerformance = () => {
   const [agentPerformance, setAgentPerformance] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { socket, isConnected, subscribeToEvent, unsubscribeFromEvent } = useSocket();
+  const { socket, isConnected } = useSocket();
 
   // Helper function to get initials from name
   const getInitials = (name) => {
@@ -52,6 +52,11 @@ const AgentPerformance = () => {
   };
 
   useEffect(() => {
+    if (!socket || !isConnected) {
+      console.log('[AgentPerformance] Socket not connected, skipping event handlers');
+      return;
+    }
+
     console.log('[AgentPerformance] Setting up socket event handlers');
     fetchAgentPerformance();
 
@@ -78,22 +83,31 @@ const AgentPerformance = () => {
       }
     };
 
-    // Subscribe to events
-    console.log('[AgentPerformance] Subscribing to socket events');
-    subscribeToEvent('ticket_updated', handleTicketUpdate);
-    subscribeToEvent('ticket_assigned', handleTicketAssigned);
-    subscribeToEvent('ticket_resolved', handleTicketResolved);
-    subscribeToEvent('stats_updated', handleStatsUpdate);
+    // Subscribe to events with safety check
+    try {
+      socket.on('ticket_updated', handleTicketUpdate);
+      socket.on('ticket_assigned', handleTicketAssigned);
+      socket.on('ticket_resolved', handleTicketResolved);
+      socket.on('stats_updated', handleStatsUpdate);
+    } catch (error) {
+      console.error('[AgentPerformance] Error subscribing to socket events:', error);
+    }
 
     // Cleanup subscriptions
     return () => {
       console.log('[AgentPerformance] Cleaning up socket event subscriptions');
-      unsubscribeFromEvent('ticket_updated', handleTicketUpdate);
-      unsubscribeFromEvent('ticket_assigned', handleTicketAssigned);
-      unsubscribeFromEvent('ticket_resolved', handleTicketResolved);
-      unsubscribeFromEvent('stats_updated', handleStatsUpdate);
+      try {
+        if (socket) {
+          socket.off('ticket_updated', handleTicketUpdate);
+          socket.off('ticket_assigned', handleTicketAssigned);
+          socket.off('ticket_resolved', handleTicketResolved);
+          socket.off('stats_updated', handleStatsUpdate);
+        }
+      } catch (error) {
+        console.error('[AgentPerformance] Error cleaning up socket events:', error);
+      }
     };
-  }, [subscribeToEvent, unsubscribeFromEvent]);
+  }, [socket, isConnected]);
 
   // Debug agent performance updates
   useEffect(() => {

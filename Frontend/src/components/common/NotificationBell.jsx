@@ -10,7 +10,7 @@ const NotificationBell = () => {
   const [notifications, setNotifications] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const { socket, isConnected, subscribeToEvent, unsubscribeFromEvent } = useSocket();
+  const { socket, isConnected } = useSocket();
   const { user } = useAuth();
   const dropdownRef = useRef(null);
   const handlersRef = useRef({});
@@ -87,7 +87,7 @@ const NotificationBell = () => {
 
     // Clean up any existing handlers
     Object.entries(handlersRef.current).forEach(([event, handler]) => {
-      unsubscribeFromEvent(event, handler, COMPONENT_NAME);
+      socket.off(event, handler);
     });
     handlersRef.current = {};
 
@@ -201,7 +201,7 @@ const NotificationBell = () => {
     // Subscribe to events with error handling
     Object.entries(handlersRef.current).forEach(([event, handler]) => {
       try {
-        subscribeToEvent(event, handler, COMPONENT_NAME);
+        socket.on(event, handler);
         console.log(`[${COMPONENT_NAME}] Successfully subscribed to ${event}`);
       } catch (error) {
         console.error(`[${COMPONENT_NAME}] Error subscribing to ${event}:`, error);
@@ -236,17 +236,19 @@ const NotificationBell = () => {
       console.log(`[${COMPONENT_NAME}] Cleaning up socket event subscriptions and intervals`);
       clearInterval(refreshInterval);
       
-      Object.entries(handlersRef.current).forEach(([event, handler]) => {
-        try {
-          unsubscribeFromEvent(event, handler, COMPONENT_NAME);
-          console.log(`[${COMPONENT_NAME}] Successfully unsubscribed from ${event}`);
-        } catch (error) {
-          console.error(`[${COMPONENT_NAME}] Error unsubscribing from ${event}:`, error);
+      try {
+        if (socket) {
+          Object.entries(handlersRef.current).forEach(([event, handler]) => {
+            socket.off(event, handler);
+            console.log(`[${COMPONENT_NAME}] Successfully unsubscribed from ${event}`);
+          });
         }
-      });
+      } catch (error) {
+        console.error(`[${COMPONENT_NAME}] Error unsubscribing from socket events:`, error);
+      }
       handlersRef.current = {};
     };
-  }, [socket, isConnected, user?.role, safeFetchNotifications, subscribeToEvent, unsubscribeFromEvent]);
+  }, [socket, isConnected, user?.role, safeFetchNotifications]);
 
   // Cleanup on unmount
   useEffect(() => {

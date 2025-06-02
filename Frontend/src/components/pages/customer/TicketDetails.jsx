@@ -19,7 +19,7 @@ const TicketDetails = () => {
   const [showRatingForm, setShowRatingForm] = useState(false);
   const [ticketRating, setTicketRating] = useState(null);
   const [refreshCounter, setRefreshCounter] = useState(0);
-  const { socket, subscribeToEvent, unsubscribeFromEvent } = useSocket();
+  const { socket, isConnected } = useSocket();
   const isMountedRef = useRef(true);
 
   // Function to explicitly refresh ticket data
@@ -178,24 +178,30 @@ const TicketDetails = () => {
 
   // Socket event subscription effect
     useEffect(() => {
-      if (!socket) {
-        console.log('[TicketDetails] Socket not available, skipping event handlers');
+      if (!socket || !isConnected) {
+        console.log('[TicketDetails] Socket not connected, skipping event handlers');
         return;
       }
 
       console.log('[TicketDetails] Setting up socket event handlers for ticket:', ticketId);
 
       // Subscribe to events
-      subscribeToEvent('new_reply', handleNewReply, 'TicketDetails');
-      subscribeToEvent('ticket_updated', handleTicketUpdate, 'TicketDetails');
+      socket.on('new_reply', handleNewReply);
+      socket.on('ticket_updated', handleTicketUpdate);
 
       // Cleanup subscriptions
       return () => {
         console.log('[TicketDetails] Cleaning up socket event subscriptions for ticket:', ticketId);
-        unsubscribeFromEvent('new_reply', handleNewReply);
-        unsubscribeFromEvent('ticket_updated', handleTicketUpdate);
+        try {
+          if (socket) {
+            socket.off('new_reply', handleNewReply);
+            socket.off('ticket_updated', handleTicketUpdate);
+          }
+        } catch (error) {
+          console.error('[TicketDetails] Error cleaning up socket events:', error);
+        }
       };
-    }, [socket, ticketId, subscribeToEvent, unsubscribeFromEvent, handleNewReply, handleTicketUpdate]);
+    }, [socket, isConnected, ticketId, handleNewReply, handleTicketUpdate]);
 
     // Cleanup on unmount
     useEffect(() => {

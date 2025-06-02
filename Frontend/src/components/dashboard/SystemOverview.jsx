@@ -6,7 +6,7 @@ import { useSocket } from '../../context/SocketContext';
 import apiClient from '../../services/api/apiClient';
 
 const SystemOverview = () => {
-  const { socket, isConnected, subscribeToEvent, unsubscribeFromEvent } = useSocket();
+  const { socket, isConnected } = useSocket();
   const [metrics, setMetrics] = useState([
     {
       icon: <FaUserTie className="text-lg text-blue-500" />,
@@ -136,22 +136,28 @@ const SystemOverview = () => {
 
     // Subscribe to events
     console.log('[SystemOverview] Subscribing to socket events');
-    subscribeToEvent('ticket_updated', handleTicketUpdate);
-    subscribeToEvent('new_ticket', handleNewTicket);
-    subscribeToEvent('ticket_resolved', handleTicketResolved);
-    subscribeToEvent('agent_status_change', handleAgentStatusChange);
-    subscribeToEvent('stats_updated', handleStatsUpdate);
+    socket.on('ticket_updated', handleTicketUpdate);
+    socket.on('new_ticket', handleNewTicket);
+    socket.on('ticket_resolved', handleTicketResolved);
+    socket.on('agent_status_change', handleAgentStatusChange);
+    socket.on('stats_updated', handleStatsUpdate);
 
     // Cleanup subscriptions
     return () => {
       console.log('[SystemOverview] Cleaning up socket event subscriptions');
-      unsubscribeFromEvent('ticket_updated', handleTicketUpdate);
-      unsubscribeFromEvent('new_ticket', handleNewTicket);
-      unsubscribeFromEvent('ticket_resolved', handleTicketResolved);
-      unsubscribeFromEvent('agent_status_change', handleAgentStatusChange);
-      unsubscribeFromEvent('stats_updated', handleStatsUpdate);
+      try {
+        if (socket) {
+          socket.off('ticket_updated', handleTicketUpdate);
+          socket.off('new_ticket', handleNewTicket);
+          socket.off('ticket_resolved', handleTicketResolved);
+          socket.off('agent_status_change', handleAgentStatusChange);
+          socket.off('stats_updated', handleStatsUpdate);
+        }
+      } catch (error) {
+        console.error('[SystemOverview] Error cleaning up socket events:', error);
+      }
     };
-  }, [subscribeToEvent, unsubscribeFromEvent]);
+  }, [socket]);
 
   // Debug metrics updates
   useEffect(() => {

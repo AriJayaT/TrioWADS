@@ -41,7 +41,7 @@ const AgentManagement = () => {
   const [openDropdownId, setOpenDropdownId] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
-  const { socket, isConnected, subscribeToEvent, unsubscribeFromEvent } = useSocket();
+  const { socket, isConnected } = useSocket();
   const handlersRef = useRef({});
 
   // Use useCallback to ensure function stability
@@ -97,7 +97,7 @@ const AgentManagement = () => {
 
     // Clean up any existing handlers
     Object.entries(handlersRef.current).forEach(([event, handler]) => {
-      unsubscribeFromEvent(event, handler);
+      socket.off(event, handler);
     });
     handlersRef.current = {};
 
@@ -145,7 +145,7 @@ const AgentManagement = () => {
 
     // Subscribe to events
     Object.entries(handlersRef.current).forEach(([event, handler]) => {
-      subscribeToEvent(event, handler);
+      socket.on(event, handler);
     });
 
     // Initial data fetch
@@ -155,12 +155,18 @@ const AgentManagement = () => {
     // Cleanup subscriptions
     return () => {
       console.log('[AgentManagement] Cleaning up socket event subscriptions');
-      Object.entries(handlersRef.current).forEach(([event, handler]) => {
-        unsubscribeFromEvent(event, handler);
-      });
+      try {
+        if (socket) {
+          Object.entries(handlersRef.current).forEach(([event, handler]) => {
+            socket.off(event, handler);
+          });
+        }
+      } catch (error) {
+        console.error('[AgentManagement] Error cleaning up socket events:', error);
+      }
       handlersRef.current = {};
     };
-  }, [socket, isConnected, subscribeToEvent, unsubscribeFromEvent, fetchAgents, fetchUnassignedTickets]);
+  }, [socket, isConnected, fetchAgents, fetchUnassignedTickets]);
 
   // Debug logging for socket connection
   useEffect(() => {
@@ -420,6 +426,11 @@ const AgentManagement = () => {
 
   // Add notification handlers
   useEffect(() => {
+    if (!socket || !isConnected) {
+      console.log('[AgentManagement] Socket not connected, skipping notification handlers');
+      return;
+    }
+
     console.log('[AgentManagement] Setting up notification handlers');
 
     const handleNewNotification = (notification) => {
@@ -441,16 +452,22 @@ const AgentManagement = () => {
     };
 
     // Subscribe to notification events
-    subscribeToEvent('new_notification', handleNewNotification);
-    subscribeToEvent('notification_read', handleNotificationRead);
+    socket.on('new_notification', handleNewNotification);
+    socket.on('notification_read', handleNotificationRead);
 
     // Cleanup subscriptions
     return () => {
       console.log('[AgentManagement] Cleaning up notification subscriptions');
-      unsubscribeFromEvent('new_notification', handleNewNotification);
-      unsubscribeFromEvent('notification_read', handleNotificationRead);
+      try {
+        if (socket) {
+          socket.off('new_notification', handleNewNotification);
+          socket.off('notification_read', handleNotificationRead);
+        }
+      } catch (error) {
+        console.error('[AgentManagement] Error cleaning up notification events:', error);
+      }
     };
-  }, [subscribeToEvent, unsubscribeFromEvent]);
+  }, [socket, isConnected]);
 
   // Debug logging for notifications
   useEffect(() => {

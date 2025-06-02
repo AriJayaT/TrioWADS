@@ -16,7 +16,7 @@ const CustomerDashboard = () => {
   const [statusFilter, setStatusFilter] = useState('All Status');
   const [notifications, setNotifications] = useState([]);
   const { user } = useAuth();
-  const { socket, isConnected, subscribeToEvent, unsubscribeAllFromComponent } = useSocket();
+  const { socket, isConnected } = useSocket();
   const isMountedRef = useRef(true);
 
   // Handle new notifications with useCallback
@@ -148,27 +148,46 @@ const CustomerDashboard = () => {
     console.log(`[${COMPONENT_NAME}] Setting up socket event handlers`);
 
     // Subscribe to events with component identifier
-    subscribeToEvent('new_notification', handleNewNotification, COMPONENT_NAME);
-    subscribeToEvent('ticket_updated', handleTicketUpdate, COMPONENT_NAME);
-    subscribeToEvent('new_reply', handleNewReply, COMPONENT_NAME);
-    subscribeToEvent('ticket_assigned', handleTicketAssigned, COMPONENT_NAME);
-    subscribeToEvent('new_ticket', handleNewTicket, COMPONENT_NAME);
+    socket.on('new_notification', handleNewNotification);
+    socket.on('ticket_updated', handleTicketUpdate);
+    socket.on('new_reply', handleNewReply);
+    socket.on('ticket_assigned', handleTicketAssigned);
+    socket.on('new_ticket', handleNewTicket);
 
     return () => {
       console.log(`[${COMPONENT_NAME}] Cleaning up socket event subscriptions`);
-      unsubscribeAllFromComponent(COMPONENT_NAME);
+      try {
+        if (socket) {
+          socket.off('new_notification');
+          socket.off('ticket_updated');
+          socket.off('new_reply');
+          socket.off('ticket_assigned');
+          socket.off('new_ticket');
+        }
+      } catch (error) {
+        console.error(`[${COMPONENT_NAME}] Error cleaning up socket events:`, error);
+      }
     };
-  }, [socket, isConnected, subscribeToEvent, unsubscribeAllFromComponent,
-      handleNewNotification, handleTicketUpdate, handleNewReply, 
+  }, [socket, isConnected, handleNewNotification, handleTicketUpdate, handleNewReply, 
       handleTicketAssigned, handleNewTicket]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
-      unsubscribeAllFromComponent(COMPONENT_NAME);
+      try {
+        if (socket) {
+          socket.off('new_notification');
+          socket.off('ticket_updated');
+          socket.off('new_reply');
+          socket.off('ticket_assigned');
+          socket.off('new_ticket');
+        }
+      } catch (error) {
+        console.error(`[${COMPONENT_NAME}] Error cleaning up socket events on unmount:`, error);
+      }
     };
-  }, [unsubscribeAllFromComponent]);
+  }, [socket]);
 
   useEffect(() => {
     const fetchTickets = async () => {

@@ -8,7 +8,7 @@ import { useAuth } from '../../../context/AuthContext';
 import ticketService from '../../../services/api/ticketService';
 
 const AdminDashboard = () => {
-  const { socket, isConnected, subscribeToEvent, unsubscribeFromEvent } = useSocket();
+  const { socket, isConnected } = useSocket();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -47,6 +47,12 @@ const AdminDashboard = () => {
     console.log('[AdminDashboard] Setting up socket event handlers');
     fetchDashboardData();
 
+    // Don't set up socket events if socket is not available
+    if (!socket || !isConnected) {
+      console.log('[AdminDashboard] Socket not available, skipping event handlers');
+      return;
+    }
+
     // Subscribe to socket events
     const handleTicketUpdate = (data) => {
       console.log('[AdminDashboard] Handling ticket update:', data);
@@ -68,22 +74,32 @@ const AdminDashboard = () => {
       fetchDashboardData(); // Refresh metrics when a ticket is escalated
     };
 
-    // Subscribe to events
-    console.log('[AdminDashboard] Subscribing to socket events');
-    subscribeToEvent('ticket_updated', handleTicketUpdate);
-    subscribeToEvent('new_ticket', handleNewTicket);
-    subscribeToEvent('ticket_assigned', handleTicketAssigned);
-    subscribeToEvent('ticket_escalated', handleTicketEscalated);
+    // Subscribe to events with safety check
+    try {
+      console.log('[AdminDashboard] Subscribing to socket events');
+      socket.on('ticket_updated', handleTicketUpdate);
+      socket.on('new_ticket', handleNewTicket);
+      socket.on('ticket_assigned', handleTicketAssigned);
+      socket.on('ticket_escalated', handleTicketEscalated);
+    } catch (error) {
+      console.error('[AdminDashboard] Error subscribing to socket events:', error);
+    }
 
     // Cleanup subscriptions
     return () => {
       console.log('[AdminDashboard] Cleaning up socket event subscriptions');
-      unsubscribeFromEvent('ticket_updated', handleTicketUpdate);
-      unsubscribeFromEvent('new_ticket', handleNewTicket);
-      unsubscribeFromEvent('ticket_assigned', handleTicketAssigned);
-      unsubscribeFromEvent('ticket_escalated', handleTicketEscalated);
+      try {
+        if (socket) {
+          socket.off('ticket_updated', handleTicketUpdate);
+          socket.off('new_ticket', handleNewTicket);
+          socket.off('ticket_assigned', handleTicketAssigned);
+          socket.off('ticket_escalated', handleTicketEscalated);
+        }
+      } catch (error) {
+        console.error('[AdminDashboard] Error cleaning up socket events:', error);
+      }
     };
-  }, [subscribeToEvent, unsubscribeFromEvent]);
+  }, [socket, isConnected]);
 
   // Debug metrics updates
   useEffect(() => {

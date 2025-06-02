@@ -12,7 +12,7 @@ const TicketDistribution = () => {
     closed: 0
   });
   const [loading, setLoading] = useState(true);
-  const { socket, isConnected, subscribeToEvent, unsubscribeFromEvent } = useSocket();
+  const { socket, isConnected } = useSocket();
 
   // Debug logging
   useEffect(() => {
@@ -36,6 +36,11 @@ const TicketDistribution = () => {
   };
 
   useEffect(() => {
+    if (!socket || !isConnected) {
+      console.log('[TicketDistribution] Socket not connected, skipping event handlers');
+      return;
+    }
+
     console.log('[TicketDistribution] Setting up socket event handlers');
     fetchTicketDistribution();
 
@@ -57,18 +62,24 @@ const TicketDistribution = () => {
 
     // Subscribe to events
     console.log('[TicketDistribution] Subscribing to socket events');
-    subscribeToEvent('ticket_updated', handleTicketUpdate);
-    subscribeToEvent('new_ticket', handleNewTicket);
-    subscribeToEvent('ticket_resolved', handleTicketResolved);
+    socket.on('ticket_updated', handleTicketUpdate);
+    socket.on('new_ticket', handleNewTicket);
+    socket.on('ticket_resolved', handleTicketResolved);
 
     // Cleanup subscriptions
     return () => {
       console.log('[TicketDistribution] Cleaning up socket event subscriptions');
-      unsubscribeFromEvent('ticket_updated', handleTicketUpdate);
-      unsubscribeFromEvent('new_ticket', handleNewTicket);
-      unsubscribeFromEvent('ticket_resolved', handleTicketResolved);
+      try {
+        if (socket) {
+          socket.off('ticket_updated', handleTicketUpdate);
+          socket.off('new_ticket', handleNewTicket);
+          socket.off('ticket_resolved', handleTicketResolved);
+        }
+      } catch (error) {
+        console.error('[TicketDistribution] Error cleaning up socket events:', error);
+      }
     };
-  }, [subscribeToEvent, unsubscribeFromEvent]);
+  }, [socket, isConnected]);
 
   // Debug distribution updates
   useEffect(() => {
