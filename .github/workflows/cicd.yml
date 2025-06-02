@@ -60,17 +60,17 @@ jobs:
         run: |
           docker compose up -d
         env:
-          MONGODB_URI: ${MONGODB_URI}
-          JWT_SECRET: ${JWT_SECRET}
-          JWT_ECPIRATION: ${JWT_ECPIRATION}
-          PORT: ${PORT}
-          NODE_ENV: ${NODE_ENV}
-          VITE_API_URL: ${VITE_API_URL}
-          EMAIL_USER: ${EMAIL_USER}
-          EMAIL_PASSWORD: ${EMAIL_PASSWORD}
-          VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID}
-          GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
-          REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET}
-          OPENAI_API_KEY: ${OPENAI_API_KEY}
-          VITE_SOCKET_URL: ${VITE_SOCKET_URL}
-          VITE_WEBSOCKET_URL: ${VITE_WEBSOCKET_URL}
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          JWT_ECPIRATION: ${{ secrets.JWT_ECPIRATION }}
+          PORT: ${{ secrets.PORT }}
+          NODE_ENV: ${{ secrets.NODE_ENV }}
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          REFRESH_TOKEN_SECRET: ${{ secrets.REFRESH_TOKEN_SECRET }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          VITE_SOCKET_URL: ${{ secrets.VITE_SOCKET_URL }}
+          VITE_WEBSOCKET_URL: ${{ secrets.VITE_WEBSOCKET_URL }}
