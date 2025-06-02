@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   backend:
-    image: arijayat/yiphelp-backend:latest
+    image: ajt3108/yiphelp-backend:latest
     restart: always
     environment:
       MONGODB_URI: ${MONGODB_URI}
@@ -21,7 +21,7 @@ services:
       - "3006:3006"
 
   frontend:
-    image: arijayat/yiphelp-frontend:latest
+    image: ajt3108/yiphelp-frontend:latest
     restart: always
     depends_on:
       - backend
