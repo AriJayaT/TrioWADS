@@ -1,9 +1,19 @@
 import OpenAI from 'openai';
+import dotenv from 'dotenv';
 
-// Initialize OpenAI client with the working API key
+// Configure dotenv for ES modules
+dotenv.config();
+
+// Initialize OpenAI client
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+// Verify API key is present
+if (!process.env.OPENAI_API_KEY) {
+  console.error('OPENAI_API_KEY environment variable is required');
+  process.exit(1);
+}
 
 console.log('OpenAI client initialized successfully with Assistants API');
 
