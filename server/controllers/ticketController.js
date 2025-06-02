@@ -1,4 +1,4 @@
-import Ticket from '../models/Ticket.js';
+﻿import Ticket from '../models/Ticket.js';
 import TicketReply from '../models/TicketReply.js';
 import User from '../models/User.js';
 import mongoose from 'mongoose';
@@ -68,7 +68,7 @@ export const getTickets = async (req, res) => {
 
 // Add throttling to emitStatsUpdate function (line ~69):
 let lastStatsUpdate = 0;
-const STATS_UPDATE_THROTTLE = 30000; // 30 seconds
+const STATS_UPDATE_THROTTLE = 60000; // 60 seconds (increased from 30)
 
 const emitStatsUpdate = async (io) => {
   if (!io) return;
@@ -225,8 +225,6 @@ export const createTicket = async (req, res) => {
       emitToUser(ticket.user._id, 'new_ticket', ticket);
       // Notify admins
       emitToRole('admin', 'new_ticket', ticket);
-      // Emit stats update
-      await emitStatsUpdate(io);
     }
 
     res.status(201).json({
@@ -431,19 +429,19 @@ export const updateTicket = async (req, res) => {
       // Notify the assigned agent if different from the one who closed it
       if (ticket.assignedTo && ticket.assignedTo.toString() !== req.user.id) {
         const agentNotification = await Notification.create({
-          recipient: ticket.assignedTo,
+          recipient: ticket.assignedTo,  // Fix: Use ticket.assignedTo (ObjectId) not ticket.assignedTo._id
           message: `Ticket "${ticket.subject}" has been closed.`,
           type: 'ticket_closed',
           role: 'agent',
           ticketId: ticket._id
         });
-        emitToUser(ticket.assignedTo._id, 'new_notification', agentNotification);
+        emitToUser(ticket.assignedTo, 'new_notification', agentNotification);  // Fix: Use ticket.assignedTo (ObjectId)
       }
       
       // Emit specific ticket closed event
       emitToUser(ticket.user._id, 'ticket_closed', updatedTicket);
-      if (ticket.assignedTo) {
-        emitToUser(ticket.assignedTo._id, 'ticket_closed', updatedTicket);
+      if (updatedTicket.assignedTo) {
+        emitToUser(updatedTicket.assignedTo._id, 'ticket_closed', updatedTicket);  // Fix: Use updatedTicket.assignedTo._id (populated)
       }
       emitToRole('admin', 'ticket_closed', updatedTicket);
     }
@@ -454,8 +452,8 @@ export const updateTicket = async (req, res) => {
       
       // Emit status change event to all relevant parties
       emitToUser(ticket.user._id, 'ticket_status_changed', updatedTicket);
-      if (ticket.assignedTo) {
-        emitToUser(ticket.assignedTo._id, 'ticket_status_changed', updatedTicket);
+      if (updatedTicket.assignedTo) {
+        emitToUser(updatedTicket.assignedTo._id, 'ticket_status_changed', updatedTicket);  // Fix: Use updatedTicket.assignedTo._id (populated)
       }
       emitToRole('admin', 'ticket_status_changed', updatedTicket);
     }
@@ -472,16 +470,16 @@ export const updateTicket = async (req, res) => {
       }
       
       // Notify assigned agent if different from ticket owner
-      if (ticket.assignedTo && ticket.assignedTo._id && !notifiedUsers.has(ticket.assignedTo._id.toString())) {
-        emitToUser(ticket.assignedTo._id, 'ticket_updated', updatedTicket);
-        notifiedUsers.add(ticket.assignedTo._id.toString());
+      if (updatedTicket.assignedTo && updatedTicket.assignedTo._id && !notifiedUsers.has(updatedTicket.assignedTo._id.toString())) {
+        emitToUser(updatedTicket.assignedTo._id, 'ticket_updated', updatedTicket);
+        notifiedUsers.add(updatedTicket.assignedTo._id.toString());
       }
       
       // Notify admins (but only those not already notified)
       emitToRole('admin', 'ticket_updated', updatedTicket);
       
-      // Emit stats update
-      await emitStatsUpdate(io);
+      // Remove frequent stats update - let it update on schedule instead
+      // await emitStatsUpdate(io);
     }
 
     res.status(200).json({
@@ -624,27 +622,78 @@ export const addReply = async (req, res) => {
 };
 
 /**
+ * Fix missing resolvedAt timestamps for resolved/closed tickets
+ * This is a utility function to ensure data consistency
+ */
+const fixMissingResolvedAtTimestamps = async () => {
+  try {
+    // Find tickets that are resolved or closed but don't have resolvedAt timestamp
+    const ticketsToFix = await Ticket.find({
+      status: { $in: ['resolved', 'closed'] },
+      $or: [
+        { resolvedAt: { $exists: false } },
+        { resolvedAt: null }
+      ]
+    });
+
+    console.log(`[FixResolvedAt] Found ${ticketsToFix.length} tickets needing resolvedAt timestamps`);
+
+    // Update them with their lastUpdated date as resolvedAt
+    for (const ticket of ticketsToFix) {
+      await Ticket.updateOne(
+        { _id: ticket._id },
+        { 
+          $set: { 
+            resolvedAt: ticket.lastUpdated || ticket.createdAt 
+          } 
+        }
+      );
+    }
+
+    if (ticketsToFix.length > 0) {
+      console.log(`[FixResolvedAt] Fixed ${ticketsToFix.length} tickets with missing resolvedAt timestamps`);
+    }
+  } catch (error) {
+    console.error('[FixResolvedAt] Error fixing missing timestamps:', error);
+  }
+};
+
+/**
  * Get enhanced ticket statistics (for admin dashboard analytics)
  * @route GET /api/tickets/stats
  * @access Private (Admin/Agent)
  */
 export const getTicketStats = async (req, res) => {
   try {
+    // Fix any missing resolvedAt timestamps first
+    await fixMissingResolvedAtTimestamps();
+
     // Check if this is an API call (has req and res)
     if (req && res) {
       if (req.user.role === 'customer') {
         return res.status(403).json({ error: 'Not authorized' });
       }
     }
-
+    
     // Fix: Support both API and helper usage
     const timeRange = req && req.query && req.query.timeRange ? req.query.timeRange : 'this-week';
+    
+    // Check if this is called from analytics page (to avoid socket emission spam)
+    const skipSocketEmission = req && req.query && req.query.skipSocket === 'true';
     
     // Calculate date ranges
     const now = new Date();
     let startDate, endDate, previousStartDate, previousEndDate;
     
     switch (timeRange) {
+      case 'all-time':
+        // For all-time data, use a very early start date and current time
+        startDate = new Date('2020-01-01'); // Start from a very early date
+        endDate = new Date(now);
+        // For all-time, previous period comparison doesn't make much sense, but set reasonable defaults
+        previousStartDate = new Date('2020-01-01');
+        previousEndDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); // 30 days ago
+        break;
       case 'today':
         startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
@@ -690,8 +739,14 @@ export const getTicketStats = async (req, res) => {
     });
     const resolvedTicketsInPeriod = await Ticket.countDocuments({ 
       resolvedAt: { $gte: startDate, $lt: endDate },
-      status: { $in: ['resolved', 'closed'] }
+      status: 'closed'
     });
+
+    console.log(`[Analytics Debug] TimeRange: ${timeRange}`);
+    console.log(`[Analytics Debug] StartDate: ${startDate.toISOString()}`);
+    console.log(`[Analytics Debug] EndDate: ${endDate.toISOString()}`);
+    console.log(`[Analytics Debug] Total tickets in period: ${totalTicketsInPeriod}`);
+    console.log(`[Analytics Debug] Resolved tickets in period: ${resolvedTicketsInPeriod}`);
 
     // Overall counts (all time)
     const total = await Ticket.countDocuments();
@@ -736,7 +791,7 @@ export const getTicketStats = async (req, res) => {
     const activeAgents = await User.countDocuments({ role: 'agent', status: 'active' });
     const totalAgents = await User.countDocuments({ role: 'agent' });
 
-    // Agent performance for time period
+    // Agent performance for time period  
     const agentPerformance = await Ticket.aggregate([
       { 
         $match: { 
@@ -745,18 +800,165 @@ export const getTicketStats = async (req, res) => {
         }
       },
       {
+        $lookup: {
+          from: 'ticketreplies',
+          localField: '_id',
+          foreignField: 'ticket',
+          as: 'replies'
+        }
+      },
+      {
+        $addFields: {
+          // Get all agent replies sorted by time
+          agentReplies: {
+            $filter: {
+              input: {
+                $sortArray: {
+                  input: '$replies',
+                  sortBy: { createdAt: 1 }
+                }
+              },
+              as: 'reply',
+              cond: { $eq: ['$$reply.sender', 'agent'] }
+            }
+          },
+          // Get all customer replies sorted by time  
+          customerReplies: {
+            $filter: {
+              input: {
+                $sortArray: {
+                  input: '$replies',
+                  sortBy: { createdAt: 1 }
+                }
+              },
+              as: 'reply',
+              cond: { $eq: ['$$reply.sender', 'customer'] }
+            }
+          }
+        }
+      },
+      {
+        $addFields: {
+          // Calculate all response times
+          allResponseTimes: {
+            $concatArrays: [
+              // First response time (ticket creation to first agent reply)
+              [
+                {
+                  $cond: [
+                    { $gt: [{ $size: '$agentReplies' }, 0] },
+                    { $subtract: [{ $arrayElemAt: ['$agentReplies.createdAt', 0] }, '$createdAt'] },
+                    null
+                  ]
+                }
+              ],
+              // Subsequent response times (customer reply to next agent reply)
+              {
+                $map: {
+                  input: '$customerReplies',
+                  as: 'customerReply',
+                  in: {
+                    $let: {
+                      vars: {
+                        nextAgentReply: {
+                          $arrayElemAt: [
+                            {
+                              $filter: {
+                                input: '$agentReplies',
+                                as: 'agentReply',
+                                cond: { $gt: ['$$agentReply.createdAt', '$$customerReply.createdAt'] }
+                              }
+                            },
+                            0
+                          ]
+                        }
+                      },
+                      in: {
+                        $cond: [
+                          { $ne: ['$$nextAgentReply', null] },
+                          { $subtract: ['$$nextAgentReply.createdAt', '$$customerReply.createdAt'] },
+                          null
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          // Get first agent reply timestamp for FCR calculation
+          firstAgentReplyTime: { $min: '$agentReplies.createdAt' },
+          // Get customer replies after first agent reply for FCR
+          customerRepliesAfterFirstAgent: {
+            $filter: {
+              input: '$customerReplies',
+              as: 'reply',
+              cond: {
+                $gt: ['$$reply.createdAt', { $min: '$agentReplies.createdAt' }]
+              }
+            }
+          }
+        }
+      },
+      {
+        $addFields: {
+          // Filter out null response times
+          validResponseTimes: {
+            $filter: {
+              input: '$allResponseTimes',
+              as: 'time',
+              cond: { $ne: ['$$time', null] }
+            }
+          },
+          // Determine if this ticket qualifies for FCR calculation
+          hasAgentReply: { $gt: [{ $size: '$agentReplies' }, 0] },
+          // FCR criteria: resolved/closed AND no customer replies after first agent reply
+          isFirstContactResolution: {
+            $and: [
+              { $in: ['$status', ['resolved', 'closed']] },
+              { $gt: [{ $size: '$agentReplies' }, 0] }, // Has at least one agent reply
+              { $eq: [{ $size: '$customerRepliesAfterFirstAgent' }, 0] } // No customer replies after first agent reply
+            ]
+          }
+        }
+      },
+      {
         $group: {
           _id: '$assignedTo',
           totalTickets: { $sum: 1 },
           resolvedTickets: {
             $sum: {
-              $cond: [{ $in: ['$status', ['resolved', 'closed']] }, 1, 0]
+              $cond: [{ $eq: ['$status', 'closed'] }, 1, 0]
+            }
+          },
+          // FCR calculation
+          ticketsWithAgentReplies: {
+            $sum: {
+              $cond: ['$hasAgentReply', 1, 0]
+            }
+          },
+          firstContactResolutions: {
+            $sum: {
+              $cond: ['$isFirstContactResolution', 1, 0]
+            }
+          },
+          // Average response time for ALL agent replies (first + subsequent)
+          avgResponseTime: {
+            $avg: {
+              $cond: [
+                { $gt: [{ $size: '$validResponseTimes' }, 0] },
+                { $avg: '$validResponseTimes' },
+                null
+              ]
             }
           },
           avgResolutionTime: {
             $avg: {
               $cond: [
-                { $in: ['$status', ['resolved', 'closed']] },
+                { $and: [
+                  { $eq: ['$status', 'closed'] },
+                  { $ne: ['$resolvedAt', null] }
+                ]},
                 { $subtract: ['$resolvedAt', '$createdAt'] },
                 null
               ]
@@ -789,6 +991,19 @@ export const getTicketStats = async (req, res) => {
               100
             ]
           },
+          // Calculate FCR percentage
+          firstContactResolutionRate: {
+            $cond: [
+              { $gt: ['$ticketsWithAgentReplies', 0] },
+              {
+                $multiply: [
+                  { $divide: ['$firstContactResolutions', '$ticketsWithAgentReplies'] },
+                  100
+                ]
+              },
+              0
+            ]
+          },
           avgRating: { $avg: '$ratings.rating' }
         }
       },
@@ -796,27 +1011,162 @@ export const getTicketStats = async (req, res) => {
         $project: {
           name: '$agent.name',
           email: '$agent.email',
+          profileImage: '$agent.profileImage',
           totalTickets: 1,
           resolvedTickets: 1,
           resolutionRate: { $round: ['$resolutionRate', 1] },
           avgResolutionTime: {
             $round: [{ $divide: ['$avgResolutionTime', 60000] }, 0]
           },
-          avgRating: { $round: ['$avgRating', 1] }
+          // Average response time for ALL agent replies in minutes
+          avgResponseTime: {
+            $round: [{ $divide: ['$avgResponseTime', 60000] }, 0]
+          },
+          avgRating: { $round: ['$avgRating', 1] },
+          // Add FCR data to the output
+          ticketsWithAgentReplies: 1,
+          firstContactResolutions: 1,
+          firstContactResolutionRate: { $round: ['$firstContactResolutionRate', 1] }
         }
       },
       { $sort: { resolvedTickets: -1 } },
       { $limit: 10 }
     ]);
 
-    // Calculate response time stats
+    // Debug logging for FCR calculation
+    console.log(`[FCR Debug] Agent performance calculated for ${agentPerformance.length} agents`);
+    agentPerformance.forEach(agent => {
+      if (agent.ticketsWithAgentReplies > 0) {
+        console.log(`[FCR Debug] ${agent.name}: ${agent.firstContactResolutions}/${agent.ticketsWithAgentReplies} FCR (${agent.firstContactResolutionRate}%)`);
+      }
+    });
+
+    // Debug logging for response times
+    console.log(`[Response Time Debug] Agent performance calculated for ${agentPerformance.length} agents`);
+    agentPerformance.forEach(agent => {
+      console.log(`[Response Time Debug] ${agent.name}: ${agent.avgResponseTime}m response time`);
+    });
+
+    // Calculate response time stats (time from ticket creation to first reply)
     const avgResponseTime = await Ticket.aggregate([
       { $match: { 
         createdAt: { $gte: startDate, $lt: endDate },
-        status: { $in: ['resolved', 'closed'] } 
+        status: 'closed',
+        resolvedAt: { $ne: null }
       }},
       { $group: { _id: null, avg: { $avg: { $subtract: ['$resolvedAt', '$createdAt'] } } } }
     ]);
+
+    // Calculate first response time (time from ticket creation to first agent response)
+    const firstResponseTime = await Ticket.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: startDate, $lt: endDate },
+          assignedTo: { $ne: null }
+        }
+      },
+      {
+        $lookup: {
+          from: 'ticketreplies',
+          localField: '_id',
+          foreignField: 'ticket',
+          as: 'replies'
+        }
+      },
+      {
+        $addFields: {
+          firstAgentReply: {
+            $filter: {
+              input: '$replies',
+              as: 'reply',
+              cond: { $eq: ['$$reply.sender', 'agent'] }
+            }
+          }
+        }
+      },
+      {
+        $addFields: {
+          firstAgentReplyTime: { $min: '$firstAgentReply.createdAt' }
+        }
+      },
+      {
+        $match: {
+          firstAgentReplyTime: { $ne: null }
+        }
+      },
+      {
+        $addFields: {
+          responseTimeMs: { $subtract: ['$firstAgentReplyTime', '$createdAt'] }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          avgFirstResponseTime: { $avg: '$responseTimeMs' }
+        }
+      }
+    ]);
+
+    // Calculate previous period first response time for trend
+    const prevFirstResponseTime = await Ticket.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: previousStartDate, $lt: previousEndDate },
+          assignedTo: { $ne: null }
+        }
+      },
+      {
+        $lookup: {
+          from: 'ticketreplies',
+          localField: '_id',
+          foreignField: 'ticket',
+          as: 'replies'
+        }
+      },
+      {
+        $addFields: {
+          firstAgentReply: {
+            $filter: {
+              input: '$replies',
+              as: 'reply',
+              cond: { $eq: ['$$reply.sender', 'agent'] }
+            }
+          }
+        }
+      },
+      {
+        $addFields: {
+          firstAgentReplyTime: { $min: '$firstAgentReply.createdAt' }
+        }
+      },
+      {
+        $match: {
+          firstAgentReplyTime: { $ne: null }
+        }
+      },
+      {
+        $addFields: {
+          responseTimeMs: { $subtract: ['$firstAgentReplyTime', '$createdAt'] }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          avgFirstResponseTime: { $avg: '$responseTimeMs' }
+        }
+      }
+    ]);
+
+    // Calculate agent count change
+    const currentAgentCount = await User.countDocuments({ 
+      role: 'agent',
+      createdAt: { $gte: startDate, $lt: endDate }
+    });
+    const prevAgentCount = await User.countDocuments({ 
+      role: 'agent',
+      createdAt: { $gte: previousStartDate, $lt: previousEndDate }
+    });
+    const agentChange = currentAgentCount - prevAgentCount;
 
     // Previous period comparison
     const prevTotalTickets = await Ticket.countDocuments({ 
@@ -824,31 +1174,44 @@ export const getTicketStats = async (req, res) => {
     });
     const prevResolvedTickets = await Ticket.countDocuments({ 
       resolvedAt: { $gte: previousStartDate, $lt: previousEndDate },
-      status: { $in: ['resolved', 'closed'] }
+      status: 'closed'
     });
     const prevAvgResponseTime = await Ticket.aggregate([
       { $match: { 
         resolvedAt: { $gte: previousStartDate, $lt: previousEndDate },
-        status: { $in: ['resolved', 'closed'] } 
+        status: 'closed'
       }},
       { $group: { _id: null, avg: { $avg: { $subtract: ['$resolvedAt', '$createdAt'] } } } }
     ]);
 
     // Calculate CSAT stats
-    const csatScores = await Rating.aggregate([
-      { $match: { createdAt: { $gte: startDate, $lt: endDate } } },
-      { $group: { _id: null, avg: { $avg: '$rating' }, count: { $sum: 1 } } }
-    ]);
-    const prevCsatScores = await Rating.aggregate([
-      { $match: { createdAt: { $gte: previousStartDate, $lt: previousEndDate } } },
-      { $group: { _id: null, avg: { $avg: '$rating' } } }
-    ]);
+    let csatScores = [{ avg: 0, count: 0 }];
+    let prevCsatScores = [{ avg: 0 }];
+    let satisfactionDistribution = [];
+    
+    try {
+      csatScores = await Rating.aggregate([
+        { $match: { createdAt: { $gte: startDate, $lt: endDate } } },
+        { $group: { _id: null, avg: { $avg: '$rating' }, count: { $sum: 1 } } }
+      ]);
+      
+      prevCsatScores = await Rating.aggregate([
+        { $match: { createdAt: { $gte: previousStartDate, $lt: previousEndDate } } },
+        { $group: { _id: null, avg: { $avg: '$rating' } } }
+      ]);
 
-    // Calculate satisfaction distribution
-    const satisfactionDistribution = await Rating.aggregate([
-      { $match: { createdAt: { $gte: startDate, $lt: endDate } } },
-      { $group: { _id: '$rating', count: { $sum: 1 } } }
-    ]);
+      // Calculate satisfaction distribution
+      satisfactionDistribution = await Rating.aggregate([
+        { $match: { createdAt: { $gte: startDate, $lt: endDate } } },
+        { $group: { _id: '$rating', count: { $sum: 1 } } }
+      ]);
+    } catch (csatError) {
+      console.error('Error calculating CSAT stats:', csatError);
+      // Use default values if CSAT calculations fail
+      csatScores = [{ avg: 0, count: 0 }];
+      prevCsatScores = [{ avg: 0 }];
+      satisfactionDistribution = [];
+    }
 
     // Format satisfaction distribution
     let ratingDist = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
@@ -856,18 +1219,76 @@ export const getTicketStats = async (req, res) => {
       ratingDist[item._id] = item.count;
     });
 
+    // Get recent ratings/feedback for analytics
+    let formattedRecentRatings = [];
+    try {
+      const recentRatings = await Rating.find({ 
+        createdAt: { $gte: startDate, $lt: endDate } 
+      })
+        .populate('user', 'name email')
+        .populate('ticket', 'subject _id')
+        .populate('agent', 'name')
+        .sort({ createdAt: -1 })
+        .limit(10);
+
+      // Format the ratings for the frontend
+      formattedRecentRatings = recentRatings.map(rating => {
+        const timeAgo = (date) => {
+          const now = new Date();
+          const diffMs = now - new Date(date);
+          const diffMins = Math.floor(diffMs / 60000);
+          
+          if (diffMins < 60) {
+            return `${diffMins}m ago`;
+          } else if (diffMins < 1440) {
+            return `${Math.floor(diffMins / 60)}h ago`;
+          } else {
+            return `${Math.floor(diffMins / 1440)}d ago`;
+          }
+        };
+
+        // Map rating to satisfaction level
+        const getSatisfactionLevel = (rating) => {
+          switch(rating) {
+            case 5: return 'Very Satisfied';
+            case 4: return 'Satisfied';
+            case 3: return 'Neutral';
+            case 2: return 'Dissatisfied';
+            case 1: return 'Very Dissatisfied';
+            default: return 'Unknown';
+          }
+        };
+
+        return {
+          _id: rating._id,
+          name: rating.user?.name || 'Anonymous',
+          rating: rating.rating,
+          satisfaction: getSatisfactionLevel(rating.rating),
+          feedback: rating.feedback || null,
+          time: timeAgo(rating.createdAt),
+          ticketId: rating.ticket?._id,
+          ticketSubject: rating.ticket?.subject,
+          agent: rating.agent?.name || 'Unassigned'
+        };
+      });
+    } catch (ratingError) {
+      console.error('Error fetching recent ratings:', ratingError);
+      // Continue with empty array if ratings fail to load
+      formattedRecentRatings = [];
+    }
+
     // Calculate resolution time by priority (High, Medium, Low)
     const resolutionTimeByPriority = await Ticket.aggregate([
       { 
         $match: { 
-          status: { $in: ['resolved', 'closed'] },
-          resolvedAt: { $gte: startDate, $lt: endDate },
+          status: 'closed',
+          resolvedAt: { $gte: startDate, $lt: endDate, $ne: null },
           priority: { $in: ['high', 'medium', 'low'] }
         }
       },
       {
         $addFields: {
-          resolutionTimeMs: { $subtract: ['$lastUpdated', '$createdAt'] }
+          resolutionTimeMs: { $subtract: ['$resolvedAt', '$createdAt'] }
         }
       },
       {
@@ -926,56 +1347,150 @@ export const getTicketStats = async (req, res) => {
       };
     });
 
-    // Calculate resolution time trend data (hourly breakdown for current day)
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
+    // Calculate resolution time trend data based on timeRange
+    let resolutionTimeTrend = [];
+    
+    if (timeRange === 'today') {
+      // Hourly breakdown for current day
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(today.getDate() + 1);
 
-    const resolutionTimeTrend = await Ticket.aggregate([
-      {
-        $match: {
-          status: { $in: ['resolved', 'closed'] },
-          resolvedAt: { $gte: today, $lt: tomorrow }
-        }
-      },
-      {
-        $addFields: {
-          resolutionTimeMs: { $subtract: ['$lastUpdated', '$createdAt'] },
-          hour: { $hour: '$resolvedAt' }
-        }
-      },
-      {
-        $group: {
-          _id: '$hour',
-          avgTime: { $avg: { $divide: ['$resolutionTimeMs', 60000] } }, // Convert to minutes
-          count: { $sum: 1 }
-        }
-      },
-      {
-        $project: {
-          hour: '$_id',
-          avgTime: { $round: ['$avgTime', 0] },
-          count: 1
-        }
-      },
-      { $sort: { hour: 1 } }
-    ]);
+      const hourlyTrend = await Ticket.aggregate([
+        {
+          $match: {
+            status: 'closed',
+            resolvedAt: { $gte: today, $lt: tomorrow, $ne: null }
+          }
+        },
+        {
+          $addFields: {
+            resolutionTimeMs: { $subtract: ['$resolvedAt', '$createdAt'] },
+            hour: { $hour: '$resolvedAt' }
+          }
+        },
+        {
+          $group: {
+            _id: '$hour',
+            avgTime: { $avg: { $divide: ['$resolutionTimeMs', 60000] } }, // Convert to minutes
+            count: { $sum: 1 }
+          }
+        },
+        {
+          $project: {
+            hour: '$_id',
+            avgTime: { $round: ['$avgTime', 0] },
+            count: 1
+          }
+        },
+        { $sort: { hour: 1 } }
+      ]);
 
-    // Format trend data for 9AM to 5PM
-    const trendData = [];
-    for (let hour = 9; hour <= 17; hour++) {
-      const data = resolutionTimeTrend.find(item => item.hour === hour);
-      const timeLabel = hour <= 12 ? `${hour}AM` : `${hour - 12}PM`;
-      if (hour === 12) {
-        trendData.push({
-          time: '12PM',
+      // Format trend data for 9AM to 5PM
+      for (let hour = 9; hour <= 17; hour++) {
+        const data = hourlyTrend.find(item => item.hour === hour);
+        const timeLabel = hour <= 12 ? `${hour}AM` : `${hour - 12}PM`;
+        if (hour === 12) {
+          resolutionTimeTrend.push({
+            time: '12PM',
+            avgTime: data?.avgTime || 0,
+            count: data?.count || 0
+          });
+        } else {
+          resolutionTimeTrend.push({
+            time: timeLabel,
+            avgTime: data?.avgTime || 0,
+            count: data?.count || 0
+          });
+        }
+      }
+    } else if (timeRange === 'this-week') {
+      // Daily breakdown for current week
+      const weeklyTrend = await Ticket.aggregate([
+        {
+          $match: {
+            status: 'closed',
+            resolvedAt: { $gte: startDate, $lt: endDate, $ne: null }
+          }
+        },
+        {
+          $addFields: {
+            resolutionTimeMs: { $subtract: ['$resolvedAt', '$createdAt'] },
+            dayOfWeek: { $dayOfWeek: '$resolvedAt' }
+          }
+        },
+        {
+          $group: {
+            _id: '$dayOfWeek',
+            avgTime: { $avg: { $divide: ['$resolutionTimeMs', 60000] } },
+            count: { $sum: 1 }
+          }
+        },
+        {
+          $project: {
+            dayOfWeek: '$_id',
+            avgTime: { $round: ['$avgTime', 0] },
+            count: 1
+          }
+        },
+        { $sort: { dayOfWeek: 1 } }
+      ]);
+
+      // Format trend data for week (1=Sunday, 2=Monday, etc.)
+      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      for (let day = 1; day <= 7; day++) {
+        const data = weeklyTrend.find(item => item.dayOfWeek === day);
+        resolutionTimeTrend.push({
+          time: dayNames[day - 1],
           avgTime: data?.avgTime || 0,
           count: data?.count || 0
         });
-      } else {
-        trendData.push({
-          time: timeLabel,
+      }
+    } else if (timeRange === 'this-month') {
+      // Weekly breakdown for current month
+      const monthlyTrend = await Ticket.aggregate([
+        {
+          $match: {
+            status: 'closed',
+            resolvedAt: { $gte: startDate, $lt: endDate, $ne: null }
+          }
+        },
+        {
+          $addFields: {
+            resolutionTimeMs: { $subtract: ['$resolvedAt', '$createdAt'] },
+            week: { 
+              $ceil: { 
+                $divide: [
+                  { $dayOfMonth: '$resolvedAt' }, 
+                  7 
+                ] 
+              } 
+            }
+          }
+        },
+        {
+          $group: {
+            _id: '$week',
+            avgTime: { $avg: { $divide: ['$resolutionTimeMs', 60000] } },
+            count: { $sum: 1 }
+          }
+        },
+        {
+          $project: {
+            week: '$_id',
+            avgTime: { $round: ['$avgTime', 0] },
+            count: 1
+          }
+        },
+        { $sort: { week: 1 } }
+      ]);
+
+      // Format trend data for weeks in month
+      for (let week = 1; week <= 4; week++) {
+        const data = monthlyTrend.find(item => item.week === week);
+        resolutionTimeTrend.push({
+          time: `Week ${week}`,
           avgTime: data?.avgTime || 0,
           count: data?.count || 0
         });
@@ -991,6 +1506,13 @@ export const getTicketStats = async (req, res) => {
       ? (csatScores[0].avg - prevCsatScores[0].avg) 
       : 0;
 
+    // Calculate first response time trend
+    const currentFirstResponseTime = firstResponseTime[0]?.avgFirstResponseTime ? Math.round(firstResponseTime[0].avgFirstResponseTime / (60 * 1000)) : 0;
+    const prevFirstResponseTimeValue = prevFirstResponseTime[0]?.avgFirstResponseTime ? Math.round(prevFirstResponseTime[0].avgFirstResponseTime / (60 * 1000)) : 0;
+    const firstResponseTimeTrend = (prevFirstResponseTimeValue && currentFirstResponseTime) 
+      ? ((currentFirstResponseTime - prevFirstResponseTimeValue) / prevFirstResponseTimeValue * 100)
+      : 0;
+
     // Calculate resolution rate
     const resolutionRate = totalTicketsInPeriod ? (resolvedTicketsInPeriod / totalTicketsInPeriod * 100) : 0;
     const prevResolutionRate = prevTotalTickets ? (prevResolvedTickets / prevTotalTickets * 100) : 0;
@@ -1002,10 +1524,18 @@ export const getTicketStats = async (req, res) => {
       statusCounts: { open, inProgress, waitingForCustomer, resolved, closed },
       priorityCounts: { high: highPriority, medium: mediumPriority, low: lowPriority },
       categoryBreakdown,
-      recentActivity: recentTickets,
+      recentActivity: recentTickets.map(ticket => ({
+        id: ticket._id,
+        subject: ticket.subject,
+        customer: ticket.user?.name || 'Unknown',
+        agent: ticket.assignedTo?.name || 'Unassigned',
+        status: ticket.status,
+        priority: ticket.priority,
+        createdAt: ticket.createdAt
+      })),
       activeAgents,
       totalAgents,
-      agentChange: 0, // Placeholder
+      agentChange: agentChange,
       avgResponseTime: avgResponseTime[0]?.avg ? Math.round(avgResponseTime[0].avg / (60 * 1000)) : 0,
       responseTimeChange: Math.round(resolutionTimeTrendPercent),
       csatScore: csatScores[0]?.avg || 0,
@@ -1016,13 +1546,13 @@ export const getTicketStats = async (req, res) => {
       overview: {
         totalTickets: totalTicketsInPeriod,
         avgResolutionTime: avgResponseTime[0]?.avg ? Math.round(avgResponseTime[0].avg / (60 * 1000)) : 0,
-        avgResponseTime: 8, // Placeholder - would need first response tracking
+        avgResponseTime: currentFirstResponseTime,
         customerSatisfaction: csatScores[0]?.avg ? Number(csatScores[0].avg.toFixed(1)) : 0,
         resolutionRate: Number(resolutionRate.toFixed(1)),
         trends: {
           tickets: Number(ticketTrend.toFixed(1)),
           resolutionTime: Number(resolutionTimeTrendPercent.toFixed(1)),
-          responseTime: -5.2, // Placeholder
+          responseTime: Number(firstResponseTimeTrend.toFixed(1)),
           satisfaction: Number(csatTrend.toFixed(1)),
           resolutionRate: Number(resolutionRateTrend.toFixed(1))
         }
@@ -1043,7 +1573,24 @@ export const getTicketStats = async (req, res) => {
         distribution: ratingDist
       },
       resolutionByPriority: resolutionByPriority,
-      resolutionTimeTrend: trendData,
+      resolutionTimeTrend: resolutionTimeTrend,
+      
+      // Today-specific data for analytics dashboard
+      todayData: timeRange === 'today' ? {
+        newTicketsToday: totalTicketsInPeriod,
+        resolvedTicketsToday: resolvedTicketsInPeriod,
+        ticketVolumeData: [
+          { name: 'New Tickets', value: totalTicketsInPeriod, fill: '#f4a3c3' },
+          { name: 'Resolved Tickets', value: resolvedTicketsInPeriod, fill: '#61c49b' }
+        ]
+      } : null,
+
+      // Week and Month time-series data for analytics dashboard
+      weekData: timeRange === 'this-week' ? await generateWeekTimeSeriesData(startDate, endDate) : null,
+      monthData: timeRange === 'this-month' ? await generateMonthTimeSeriesData(startDate, endDate) : null,
+
+      recentRatings: formattedRecentRatings,
+
       recentActivity: recentTickets.map(ticket => ({
         id: ticket._id,
         subject: ticket.subject,
@@ -1057,12 +1604,18 @@ export const getTicketStats = async (req, res) => {
 
     // If this is an API call, send the response
     if (req && res) {
-      // Emit socket event for stats update
-      const io = req.app.get('io');
-      if (io) {
-        emitToRole('admin', 'stats_updated', stats);
-        emitToRole('agent', 'stats_updated', stats);
-      }
+      // COMPLETELY DISABLE socket emissions to prevent feedback loop
+      // Note: Dashboard components will now only update when users refresh or navigate
+      // This prevents the continuous socket spam that was crashing the server
+      
+      // Commented out all socket emissions to stop feedback loop:
+      // if (!skipSocketEmission) {
+      //   const io = req.app.get('io');
+      //   if (io) {
+      //     emitToRole('admin', 'stats_updated', stats);
+      //     emitToRole('agent', 'stats_updated', stats);
+      //   }
+      // }
 
       return res.status(200).json({
         success: true,
@@ -1430,7 +1983,7 @@ export const escalateTicket = async (req, res) => {
         // Notify all relevant users about the escalation
         emitToUser(ticket.user._id, 'ticket_escalated', ticket);
         if (ticket.assignedTo) {
-          emitToUser(ticket.assignedTo._id, 'ticket_escalated', ticket);
+          emitToUser(ticket.assignedTo, 'ticket_escalated', ticket);
         }
         emitToRole('admin', 'ticket_escalated', ticket);
       }
@@ -1464,16 +2017,32 @@ export const getAgentStats = async (req, res) => {
     const agentId = req.user.id;
     const { timeRange = 'this-week' } = req.query;
     
+    console.log(`[getAgentStats] Fetching stats for agent ${agentId} with timeRange ${timeRange}`);
+    
     // Calculate date ranges
     const now = new Date();
     let startDate, endDate, previousStartDate, previousEndDate;
     
     switch (timeRange) {
+      case 'all-time':
+        // For all-time data, use a very early start date and current time
+        startDate = new Date('2020-01-01'); // Start from a very early date
+        endDate = new Date(now);
+        // For all-time, previous period comparison doesn't make much sense, but set reasonable defaults
+        previousStartDate = new Date('2020-01-01');
+        previousEndDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); // 30 days ago
+        break;
       case 'today':
         startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
         previousStartDate = new Date(startDate.getTime() - 24 * 60 * 60 * 1000);
         previousEndDate = startDate;
+        break;
+      case 'yesterday':
+        endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        startDate = new Date(endDate.getTime() - 24 * 60 * 60 * 1000);
+        previousEndDate = startDate;
+        previousStartDate = new Date(startDate.getTime() - 24 * 60 * 60 * 1000);
         break;
       case 'this-week':
         const dayOfWeek = now.getDay();
@@ -1489,12 +2058,25 @@ export const getAgentStats = async (req, res) => {
         previousStartDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         previousEndDate = startDate;
         break;
+      case 'last-month':
+        startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        endDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        previousStartDate = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+        previousEndDate = startDate;
+        break;
       default:
         startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
         endDate = new Date(now);
         previousStartDate = new Date(startDate.getTime() - 7 * 24 * 60 * 60 * 1000);
         previousEndDate = startDate;
     }
+
+    console.log(`[getAgentStats] Date range: ${startDate.toISOString()} to ${endDate.toISOString()}`);
+
+    // Get all tickets assigned to this agent (for counting)
+    const allAgentTickets = await Ticket.countDocuments({ 
+      assignedTo: agentId
+    });
 
     // Get agent-specific metrics for current period
     const agentTicketsInPeriod = await Ticket.countDocuments({ 
@@ -1507,6 +2089,15 @@ export const getAgentStats = async (req, res) => {
       resolvedAt: { $gte: startDate, $lt: endDate },
       status: { $in: ['resolved', 'closed'] }
     });
+
+    // Get total resolved tickets for this agent (all time)
+    const totalAgentResolved = await Ticket.countDocuments({ 
+      assignedTo: agentId,
+      status: { $in: ['resolved', 'closed'] }
+    });
+
+    console.log(`[getAgentStats] Current period: ${agentTicketsInPeriod} tickets, ${agentResolvedInPeriod} resolved`);
+    console.log(`[getAgentStats] Total agent tickets: ${allAgentTickets}, Total resolved: ${totalAgentResolved}`);
 
     // Get agent-specific metrics for previous period (for comparison)
     const agentTicketsPrevPeriod = await Ticket.countDocuments({ 
@@ -1521,9 +2112,11 @@ export const getAgentStats = async (req, res) => {
     });
 
     // Calculate resolution rate and change
-    const resolutionRate = agentTicketsInPeriod > 0 ? (agentResolvedInPeriod / agentTicketsInPeriod) * 100 : 0;
+    const resolutionRate = allAgentTickets > 0 ? (totalAgentResolved / allAgentTickets) * 100 : 0;
     const prevResolutionRate = agentTicketsPrevPeriod > 0 ? (agentResolvedPrevPeriod / agentTicketsPrevPeriod) * 100 : 0;
     const resolutionRateChange = resolutionRate - prevResolutionRate;
+
+    console.log(`[getAgentStats] Resolution rate: ${resolutionRate}%, Previous: ${prevResolutionRate}%`);
 
     // Calculate average response time for this agent
     const agentAvgResponseTime = await Ticket.aggregate([
@@ -1562,12 +2155,30 @@ export const getAgentStats = async (req, res) => {
     const prevAvgResponseTime = agentPrevAvgResponseTime[0]?.avg ? Math.round(agentPrevAvgResponseTime[0].avg / (60 * 1000)) : 0;
     const responseTimeChange = currentAvgResponseTime - prevAvgResponseTime;
 
+    console.log(`[getAgentStats] Response time: ${currentAvgResponseTime}m, Previous: ${prevAvgResponseTime}m`);
+
     // Get agent's CSAT score
     const agentRatings = await Rating.aggregate([
       {
         $match: {
           agent: new mongoose.Types.ObjectId(agentId),
           createdAt: { $gte: startDate, $lt: endDate }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          avgRating: { $avg: '$rating' },
+          totalRatings: { $sum: 1 }
+        }
+      }
+    ]);
+
+    // Get all-time CSAT score for this agent
+    const agentAllTimeRatings = await Rating.aggregate([
+      {
+        $match: {
+          agent: new mongoose.Types.ObjectId(agentId)
         }
       },
       {
@@ -1595,9 +2206,14 @@ export const getAgentStats = async (req, res) => {
       }
     ]);
 
-    const currentCsatScore = agentRatings[0]?.avgRating ? Number(agentRatings[0].avgRating.toFixed(1)) : 0;
+    // Use all-time CSAT score if current period has no ratings
+    const currentCsatScore = agentRatings[0]?.avgRating ? Number(agentRatings[0].avgRating.toFixed(1)) : 
+                           (agentAllTimeRatings[0]?.avgRating ? Number(agentAllTimeRatings[0].avgRating.toFixed(1)) : 0);
     const prevCsatScore = agentPrevRatings[0]?.avgRating ? Number(agentPrevRatings[0].avgRating.toFixed(1)) : 0;
     const csatScoreChange = currentCsatScore - prevCsatScore;
+
+    console.log(`[getAgentStats] CSAT Score: ${currentCsatScore}, Previous: ${prevCsatScore}`);
+    console.log(`[getAgentStats] Total ratings for agent: ${agentAllTimeRatings[0]?.totalRatings || 0}`);
 
     // Get recent activity for this agent ONLY
     const agentRecentTickets = await Ticket.find({ 
@@ -1668,14 +2284,16 @@ export const getAgentStats = async (req, res) => {
       resolutionRateChange: Number(resolutionRateChange.toFixed(1)),
       csatScore: currentCsatScore,
       csatScoreChange: Number(csatScoreChange.toFixed(1)),
-      ticketsResolved: agentResolvedInPeriod,
+      ticketsResolved: totalAgentResolved, // Use total resolved instead of period resolved for better visibility
       ticketsResolvedChange: agentResolvedInPeriod - agentResolvedPrevPeriod,
-      totalTicketsAssigned: agentTicketsInPeriod,
+      totalTicketsAssigned: allAgentTickets,
       recentActivity: limitedRecentActivity.map(activity => ({
         ...activity,
         time: formatTimeAgo(activity.time)
       }))
     };
+
+    console.log(`[getAgentStats] Final stats:`, stats);
 
     res.status(200).json({
       success: true,
@@ -1730,6 +2348,7 @@ export const getRecentRatings = async (req, res) => {
         _id: rating._id,
         name: rating.user?.name || 'Anonymous',
         rating: rating.rating,
+        satisfaction: rating.rating,
         feedback: rating.feedback || null,
         time: timeAgo(rating.createdAt),
         ticketId: rating.ticket?._id,
@@ -1748,3 +2367,181 @@ export const getRecentRatings = async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 }; 
+
+// Helper function to generate week time-series data
+const generateWeekTimeSeriesData = async (startDate, endDate) => {
+  console.log(`[Week Helper Debug] Called with startDate: ${startDate.toISOString()}, endDate: ${endDate.toISOString()}`);
+  
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']; // Start with Sunday to match main logic
+  const weekData = [];
+  let totalNewTickets = 0;
+  let totalResolvedTickets = 0;
+  
+  // Use the exact same week calculation as the main function
+  // startDate is already calculated as beginning of week (Sunday)
+  const weekStart = new Date(startDate);
+  
+  for (let i = 0; i < 7; i++) {
+    const dayStart = new Date(weekStart);
+    dayStart.setDate(weekStart.getDate() + i);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayStart.getDate() + 1);
+    
+    // Don't count future days or days beyond endDate
+    if (dayStart >= endDate) {
+      weekData.push({
+        name: dayNames[i],
+        New: 0,
+        Resolved: 0
+      });
+      continue;
+    }
+    
+    // Use the actual endDate if we're on the current day
+    const actualDayEnd = dayEnd > endDate ? endDate : dayEnd;
+    
+    // Count tickets created on this day
+    const newTickets = await Ticket.countDocuments({
+      createdAt: { $gte: dayStart, $lt: actualDayEnd }
+    });
+    
+    // Count tickets resolved on this day
+    const resolvedTickets = await Ticket.countDocuments({
+      resolvedAt: { $gte: dayStart, $lt: actualDayEnd },
+      status: { $in: ['resolved', 'closed'] }
+    });
+    
+    console.log(`[Week Helper Debug] ${dayNames[i]} (${dayStart.toDateString()}): New=${newTickets}, Resolved=${resolvedTickets}`);
+    
+    totalNewTickets += newTickets;
+    totalResolvedTickets += resolvedTickets;
+    
+    weekData.push({
+      name: dayNames[i],
+      New: newTickets,
+      Resolved: resolvedTickets
+    });
+  }
+  
+  console.log(`[Week Helper Debug] Week totals: New=${totalNewTickets}, Resolved=${totalResolvedTickets}`);
+  
+  return weekData;
+};
+
+// Helper function to generate month time-series data
+const generateMonthTimeSeriesData = async (startDate, endDate) => {
+  const weekData = [];
+  const monthStart = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  
+  for (let week = 1; week <= 4; week++) {
+    const weekStart = new Date(monthStart);
+    weekStart.setDate(1 + (week - 1) * 7);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 7);
+    
+    // Don't go beyond the current date
+    const actualEndDate = weekEnd > endDate ? endDate : weekEnd;
+    
+    // Count tickets created in this week
+    const newTickets = await Ticket.countDocuments({
+      createdAt: { $gte: weekStart, $lt: actualEndDate }
+    });
+    
+    // Count tickets resolved in this week
+    const resolvedTickets = await Ticket.countDocuments({
+      resolvedAt: { $gte: weekStart, $lt: actualEndDate },
+      status: { $in: ['resolved', 'closed'] }
+    });
+    
+    weekData.push({
+      name: `Week ${week}`,
+      New: newTickets,
+      Resolved: resolvedTickets
+    });
+  }
+  
+  return weekData;
+};
+
+/**
+ * Test endpoint to analyze FCR calculation for debugging
+ * @route GET /api/tickets/test-fcr
+ * @access Private (Admin only)
+ */
+export const testFCRCalculation = async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    // Get recent tickets with replies for testing
+    const testTickets = await Ticket.find({
+      assignedTo: { $ne: null },
+      createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } // Last 7 days
+    })
+    .populate('assignedTo', 'name')
+    .populate('user', 'name')
+    .limit(10);
+
+    const analysisResults = [];
+
+    for (const ticket of testTickets) {
+      // Get all replies for this ticket
+      const replies = await TicketReply.find({ ticket: ticket._id })
+        .populate('user', 'name role')
+        .sort({ createdAt: 1 });
+
+      // Analyze the conversation
+      const agentReplies = replies.filter(reply => reply.sender === 'agent');
+      const customerReplies = replies.filter(reply => reply.sender === 'customer');
+      
+      const firstAgentReply = agentReplies[0];
+      const customerRepliesAfterFirstAgent = firstAgentReply 
+        ? customerReplies.filter(reply => reply.createdAt > firstAgentReply.createdAt)
+        : [];
+
+      const isResolved = ['resolved', 'closed'].includes(ticket.status);
+      const hasAgentReply = agentReplies.length > 0;
+      const noCustomerRepliesAfter = customerRepliesAfterFirstAgent.length === 0;
+      
+      const isFCR = isResolved && hasAgentReply && noCustomerRepliesAfter;
+
+      analysisResults.push({
+        ticketId: ticket._id,
+        subject: ticket.subject,
+        status: ticket.status,
+        agent: ticket.assignedTo?.name || 'Unassigned',
+        customer: ticket.user?.name || 'Unknown',
+        totalReplies: replies.length,
+        agentReplies: agentReplies.length,
+        customerReplies: customerReplies.length,
+        customerRepliesAfterFirstAgent: customerRepliesAfterFirstAgent.length,
+        isResolved,
+        hasAgentReply,
+        noCustomerRepliesAfter,
+        isFCR,
+        conversationFlow: replies.map(reply => ({
+          sender: reply.sender,
+          timestamp: reply.createdAt,
+          user: reply.user?.name
+        }))
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'FCR test analysis completed',
+      totalTicketsAnalyzed: analysisResults.length,
+      fcrTickets: analysisResults.filter(r => r.isFCR).length,
+      ticketsWithAgentReplies: analysisResults.filter(r => r.hasAgentReply).length,
+      fcrPercentage: analysisResults.filter(r => r.hasAgentReply).length > 0 
+        ? Math.round((analysisResults.filter(r => r.isFCR).length / analysisResults.filter(r => r.hasAgentReply).length) * 100)
+        : 0,
+      details: analysisResults
+    });
+
+  } catch (error) {
+    console.error('FCR test calculation error:', error);
+    res.status(500).json({ error: 'Server error during FCR test' });
+  }
+};

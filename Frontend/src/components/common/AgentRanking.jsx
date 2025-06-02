@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FaStar, FaArrowUp, FaArrowDown } from 'react-icons/fa';
+import { FaStar, FaArrowUp, FaArrowDown, FaTicketAlt } from 'react-icons/fa';
 
 const AgentRanking = ({ data = [], timeRange = 'this-week' }) => {
   const [sortKey, setSortKey] = useState('resolvedTickets');
@@ -9,10 +9,12 @@ const AgentRanking = ({ data = [], timeRange = 'this-week' }) => {
     name: agent.name || 'Unknown',
     role: 'Support Agent', // Could be enhanced with role from backend
     initials: agent.name ? agent.name.split(' ').map(n => n[0]).join('') : '??',
+    profileImage: agent.profileImage, // Use actual profile image from backend
     tickets: agent.totalTickets || 0,
     resolved: agent.resolvedTickets || 0,
     avgResolution: agent.avgResolutionTime ? `${agent.avgResolutionTime}m` : '0m',
-    responseTime: agent.avgResponseTime || 0,
+    responseTime: agent.avgResponseTime || 0, // This is already in minutes from backend
+    responseTimeFormatted: agent.avgResponseTime ? `${agent.avgResponseTime}m` : '0m', // Formatted display
     rating: agent.avgRating || 0,
     sla: agent.resolutionRate || 0,
     trend: agent.resolvedTickets > (agent.totalTickets * 0.8) ? 'up' : 'down'
@@ -28,7 +30,11 @@ const AgentRanking = ({ data = [], timeRange = 'this-week' }) => {
       <div className="bg-white p-6 rounded-2xl shadow">
         <h2 className="text-lg font-bold mb-4">Agent Rankings</h2>
         <div className="text-center py-8 text-gray-500">
-          No agent data available for {timeRange}
+          <div className="text-center">
+            <FaTicketAlt className="mx-auto h-12 w-12 text-gray-300 mb-3" />
+            <p className="text-sm font-medium">No agents have resolved tickets yet</p>
+            <p className="text-xs mt-1">Rankings will appear once agents start resolving tickets in {timeRange}</p>
+          </div>
         </div>
       </div>
     );
@@ -58,8 +64,22 @@ const AgentRanking = ({ data = [], timeRange = 'this-week' }) => {
             className="flex items-center justify-between p-4 rounded-xl border border-pink-100"
           >
             <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-full bg-pink-100 text-pink-500 font-bold flex items-center justify-center">
-                {agent.initials}
+              <div className="w-10 h-10 rounded-full bg-pink-100 text-pink-500 font-bold flex items-center justify-center overflow-hidden">
+                {agent.profileImage ? (
+                  <img 
+                    src={agent.profileImage} 
+                    alt={agent.name}
+                    className="w-full h-full object-cover rounded-full"
+                    onError={(e) => {
+                      // On error, replace with initials
+                      const parent = e.target.parentElement;
+                      parent.className = 'w-10 h-10 rounded-full bg-pink-100 text-pink-500 font-bold flex items-center justify-center';
+                      parent.innerHTML = agent.initials;
+                    }}
+                  />
+                ) : (
+                  agent.initials
+                )}
               </div>
               <div>
                 <div className="font-semibold text-black">{agent.name}</div>
@@ -77,7 +97,7 @@ const AgentRanking = ({ data = [], timeRange = 'this-week' }) => {
                   <span className="font-medium">{agent.rating ? agent.rating.toFixed(1) : '0.0'}</span>
                   <FaStar className="text-pink-400 text-xs" />
                 </div>
-                <div className="text-xs text-gray-400">{agent.responseTime}m response</div>
+                <div className="text-xs text-gray-400">{agent.responseTimeFormatted} response</div>
               </div>
               <div className="text-right">
                 <div className="font-medium">{agent.sla ? agent.sla.toFixed(0) : 0}%</div>

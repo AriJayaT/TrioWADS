@@ -1,40 +1,32 @@
 import React, { useState, useEffect } from 'react';
-import { FaUsers, FaTicketAlt, FaClock, FaStar } from 'react-icons/fa';
+import { FaUserTie, FaInbox, FaStopwatch, FaHeart } from 'react-icons/fa';
 import MetricCard from '../common/MetricCard';
 import Button from '../common/Button';
 import { useSocket } from '../../context/SocketContext';
-import ticketService from '../../services/api/ticketService';
+import apiClient from '../../services/api/apiClient';
 
 const SystemOverview = () => {
   const { socket, isConnected, subscribeToEvent, unsubscribeFromEvent } = useSocket();
   const [metrics, setMetrics] = useState([
     {
-      icon: <FaUsers className="text-lg text-blue-500" />,
+      icon: <FaUserTie className="text-lg text-blue-500" />,
       value: '0',
-      label: 'Total Agents',
-      change: '+0',
-      changeType: 'positive'
+      label: 'Total Agents'
     },
     {
-      icon: <FaTicketAlt className="text-lg text-orange-400" />,
+      icon: <FaInbox className="text-lg text-orange-400" />,
       value: '0',
-      label: 'Ticket Volume',
-      change: '+0%',
-      changeType: 'positive'
+      label: 'Ticket Volume'
     },
     {
-      icon: <FaClock className="text-lg text-green-500" />,
+      icon: <FaStopwatch className="text-lg text-green-500" />,
       value: '0m',
-      label: 'Avg Response Time',
-      change: '+0%',
-      changeType: 'positive'
+      label: 'Avg Response Time'
     },
     {
-      icon: <FaStar className="text-lg text-yellow-400" />,
+      icon: <FaHeart className="text-lg text-pink-500" />,
       value: '0.0',
-      label: 'Overall CSAT',
-      change: '+0',
-      changeType: 'positive'
+      label: 'Overall CSAT'
     }
   ]);
 
@@ -46,37 +38,37 @@ const SystemOverview = () => {
   const fetchMetrics = async () => {
     try {
       console.log('[SystemOverview] Fetching metrics data...');
-      const response = await ticketService.getTicketStats();
+      // Request all-time data by using a very wide date range or special parameter
+      const response = await apiClient.get('/tickets/stats', {
+        params: { timeRange: 'all-time' } // Request all-time data instead of default 'this-week'
+      });
       console.log('[SystemOverview] Received metrics data:', response);
-      if (response.success) {
+      if (response.data.success) {
+        // Calculate team average response time using the EXACT same method as Agent Performance tab
+        const teamAvgResponseTime = response.data.stats.agentPerformance.length > 0 
+          ? Math.round(response.data.stats.agentPerformance.reduce((sum, agent) => sum + (agent.avgResponseTime || 0), 0) / response.data.stats.agentPerformance.length)
+          : 0;
+        
         setMetrics([
           {
-            icon: <FaUsers className="text-lg text-blue-500" />,
-            value: (response.stats.totalAgents || 0).toString(),
-            label: 'Total Agents',
-            change: response.stats.agentChange >= 0 ? `+${response.stats.agentChange}` : `${response.stats.agentChange}`,
-            changeType: response.stats.agentChange >= 0 ? 'positive' : 'negative'
+            icon: <FaUserTie className="text-lg text-blue-500" />,
+            value: (response.data.stats.totalAgents || 0).toString(),
+            label: 'Total Agents'
           },
           {
-            icon: <FaTicketAlt className="text-lg text-orange-400" />,
-            value: response.stats.total.toString(),
-            label: 'Ticket Volume',
-            change: response.stats.ticketVolumeChange >= 0 ? `+${response.stats.ticketVolumeChange}%` : `${response.stats.ticketVolumeChange}%`,
-            changeType: response.stats.ticketVolumeChange >= 0 ? 'positive' : 'negative'
+            icon: <FaInbox className="text-lg text-orange-400" />,
+            value: response.data.stats.total.toString(),
+            label: 'Ticket Volume'
           },
           {
-            icon: <FaClock className="text-lg text-green-500" />,
-            value: `${response.stats.avgResponseTime || 0}m`,
-            label: 'Avg Response Time',
-            change: response.stats.responseTimeChange >= 0 ? `+${response.stats.responseTimeChange}%` : `${response.stats.responseTimeChange}%`,
-            changeType: response.stats.responseTimeChange <= 0 ? 'positive' : 'negative'
+            icon: <FaStopwatch className="text-lg text-green-500" />,
+            value: `${teamAvgResponseTime}m`,
+            label: 'Avg Response Time'
           },
           {
-            icon: <FaStar className="text-lg text-yellow-400" />,
-            value: response.stats.csatScore?.toFixed(1) || '0.0',
-            label: 'Overall CSAT',
-            change: response.stats.csatChange >= 0 ? `+${response.stats.csatChange}` : `${response.stats.csatChange}`,
-            changeType: response.stats.csatChange >= 0 ? 'positive' : 'negative'
+            icon: <FaHeart className="text-lg text-pink-500" />,
+            value: response.data.stats.csatScore?.toFixed(1) || '0.0',
+            label: 'Overall CSAT'
           }
         ]);
       }
@@ -112,34 +104,32 @@ const SystemOverview = () => {
 
     const handleStatsUpdate = (stats) => {
       console.log('[SystemOverview] Handling stats update:', stats);
+      
+      // Calculate team average response time using the EXACT same method as Agent Performance tab
+      const teamAvgResponseTime = stats.agentPerformance.length > 0 
+        ? Math.round(stats.agentPerformance.reduce((sum, agent) => sum + (agent.avgResponseTime || 0), 0) / stats.agentPerformance.length)
+        : 0;
+      
       setMetrics([
         {
-          icon: <FaUsers className="text-lg text-blue-500" />,
+          icon: <FaUserTie className="text-lg text-blue-500" />,
           value: (stats.totalAgents || 0).toString(),
-          label: 'Total Agents',
-          change: stats.agentChange >= 0 ? `+${stats.agentChange}` : `${stats.agentChange}`,
-          changeType: stats.agentChange >= 0 ? 'positive' : 'negative'
+          label: 'Total Agents'
         },
         {
-          icon: <FaTicketAlt className="text-lg text-orange-400" />,
+          icon: <FaInbox className="text-lg text-orange-400" />,
           value: stats.total.toString(),
-          label: 'Ticket Volume',
-          change: stats.ticketVolumeChange >= 0 ? `+${stats.ticketVolumeChange}%` : `${stats.ticketVolumeChange}%`,
-          changeType: stats.ticketVolumeChange >= 0 ? 'positive' : 'negative'
+          label: 'Ticket Volume'
         },
         {
-          icon: <FaClock className="text-lg text-green-500" />,
-          value: `${stats.avgResponseTime || 0}m`,
-          label: 'Avg Response Time',
-          change: stats.responseTimeChange >= 0 ? `+${stats.responseTimeChange}%` : `${stats.responseTimeChange}%`,
-          changeType: stats.responseTimeChange <= 0 ? 'positive' : 'negative'
+          icon: <FaStopwatch className="text-lg text-green-500" />,
+          value: `${teamAvgResponseTime}m`,
+          label: 'Avg Response Time'
         },
         {
-          icon: <FaStar className="text-lg text-yellow-400" />,
+          icon: <FaHeart className="text-lg text-pink-500" />,
           value: stats.csatScore?.toFixed(1) || '0.0',
-          label: 'Overall CSAT',
-          change: stats.csatChange >= 0 ? `+${stats.csatChange}` : `${stats.csatChange}`,
-          changeType: stats.csatChange >= 0 ? 'positive' : 'negative'
+          label: 'Overall CSAT'
         }
       ]);
     };
@@ -188,8 +178,6 @@ const SystemOverview = () => {
               icon={metric.icon}
               value={metric.value}
               label={metric.label}
-              change={metric.change}
-              changeType={metric.changeType}
             />
           </div>
         ))}

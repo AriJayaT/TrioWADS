@@ -7,14 +7,10 @@ import ResolutionByPriority from '../../common/ResolutionByPriority';
 import ResolutionTimeTrendChart from '../../common/ResolutionTimeTrendChart';
 import AgentRanking from '../../common/AgentRanking';
 import FirstContactResolution from '../../common/FirstContactResolution';
-import TicketReopenRate from '../../common/TicketReopenRate';
 import SatisfactionDistribution from '../../common/SatisfactionDistribution';
 import RecentFeedback from '../../common/RecentFeedback';
 import MetricCard from '../../common/MetricCard';
-import { useSocket } from '../../../context/SocketContext';
 import apiClient from '../../../services/api/apiClient';
-
-const COMPONENT_NAME = 'AdminAnalytic';
 
 const AdminAnalytic = () => {
     const [activeTab, setActiveTab] = useState('overview');
@@ -45,10 +41,10 @@ const AdminAnalytic = () => {
             totalRatings: 0,
             distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
         },
-        recentActivity: []
+        recentActivity: [],
+        resolutionByPriority: [],
+        resolutionTimeTrend: []
     });
-
-    const { socket, isConnected, subscribeToEvent, unsubscribeAllFromComponent } = useSocket();
 
     // Fetch analytics data
     const fetchAnalyticsData = async () => {
@@ -56,40 +52,53 @@ const AdminAnalytic = () => {
             setLoading(true);
             setError(null);
             
+            console.log(`[AdminAnalytic] Fetching analytics data for timeRange: ${timeRange}`);
+            
             const response = await apiClient.get('/tickets/stats', {
-                params: { timeRange }
+                params: { 
+                    timeRange,
+                    skipSocket: 'true'  // Prevent socket emissions to avoid feedback loop
+                }
             });
             
             if (response.data.success) {
+                console.log(`[AdminAnalytic] Successfully fetched analytics data`);
                 setAnalyticsData(response.data.stats);
+            } else {
+                console.error(`[AdminAnalytic] API returned success: false`);
+                setError('Failed to load analytics data - invalid response');
             }
         } catch (err) {
             console.error('Failed to fetch analytics:', err);
-            setError('Failed to load analytics data');
+            
+            // More specific error messages
+            if (err.response) {
+                const status = err.response.status;
+                const message = err.response.data?.message || err.response.data?.error || 'Unknown server error';
+                setError(`Server error (${status}): ${message}`);
+            } else if (err.request) {
+                setError('Network error: Unable to connect to server');
+            } else {
+                setError(`Request error: ${err.message}`);
+            }
         } finally {
             setLoading(false);
         }
     };
 
+    // Only fetch data when timeRange changes or component mounts
     useEffect(() => {
         fetchAnalyticsData();
     }, [timeRange]);
 
+    // Fetch data when switching tabs (activeTab changes)
     useEffect(() => {
-        // Subscribe to real-time updates
-        const handleStatsUpdate = () => {
+        // Only fetch if we already have some data loaded (not first mount)
+        if (analyticsData.overview.totalTickets > 0 || !loading) {
+            console.log(`[AdminAnalytic] Tab switched to: ${activeTab}, fetching fresh data`);
             fetchAnalyticsData();
-        };
-
-        subscribeToEvent('stats_updated', handleStatsUpdate, COMPONENT_NAME);
-        subscribeToEvent('ticket_updated', handleStatsUpdate, COMPONENT_NAME);
-        subscribeToEvent('new_ticket', handleStatsUpdate, COMPONENT_NAME);
-        subscribeToEvent('ticket_resolved', handleStatsUpdate, COMPONENT_NAME);
-
-        return () => {
-            unsubscribeAllFromComponent(COMPONENT_NAME);
-        };
-    }, [subscribeToEvent, unsubscribeAllFromComponent, timeRange]);
+        }
+    }, [activeTab]);
 
     const formatMetric = (value, type = 'number') => {
         if (value === null || value === undefined || value === 0) return '0';
@@ -155,6 +164,7 @@ const AdminAnalytic = () => {
                 setActiveTab={setActiveTab}
                 timeRange={timeRange}
                 setTimeRange={setTimeRange}
+                analyticsData={analyticsData}
             />
 
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
@@ -166,29 +176,34 @@ const AdminAnalytic = () => {
                             <MetricCard 
                                 metricType="resolution" 
                                 value={formatMetric(analyticsData.overview.avgResolutionTime, 'time')}
-                                label="Avg Resolution Time" 
-                                trend={formatTrend(analyticsData.overview.trends.resolutionTime)}
+                                label={timeRange === 'today' ? "Today's Avg Resolution Time" : "Avg Resolution Time"}
+                                trend={null}
                                 trendIsGood={analyticsData.overview.trends.resolutionTime <= 0} 
                             />
                             <MetricCard 
                                 metricType="response" 
-                                value={formatMetric(analyticsData.overview.avgResponseTime, 'time')}
-                                label="First Response Time" 
-                                trend={formatTrend(analyticsData.overview.trends.responseTime)}
+                                value={formatMetric(
+                                    analyticsData.agentPerformance.length > 0 
+                                        ? Math.round(analyticsData.agentPerformance.reduce((sum, agent) => sum + (agent.avgResponseTime || 0), 0) / analyticsData.agentPerformance.length)
+                                        : 0, 
+                                    'time'
+                                )}
+                                label={timeRange === 'today' ? "Today's Avg Response Time" : "Avg Response Time"}
+                                trend={null}
                                 trendIsGood={analyticsData.overview.trends.responseTime <= 0} 
                             />
                             <MetricCard 
                                 metricType="satisfaction" 
                                 value={formatMetric(analyticsData.overview.customerSatisfaction, 'rating')}
-                                label="Customer Satisfaction" 
-                                trend={formatTrend(analyticsData.overview.trends.satisfaction, 'number')}
+                                label={timeRange === 'today' ? "Today's Customer Satisfaction" : "Customer Satisfaction"}
+                                trend={null}
                                 trendIsGood={analyticsData.overview.trends.satisfaction >= 0}
                             />
                             <MetricCard 
                                 metricType="tickets" 
                                 value={formatMetric(analyticsData.overview.totalTickets)}
-                                label="Total Tickets" 
-                                trend={formatTrend(analyticsData.overview.trends.tickets)}
+                                label={timeRange === 'today' ? "Today's Total Tickets" : "Total Tickets"}
+                                trend={null}
                                 trendIsGood={analyticsData.overview.trends.tickets >= 0}
                             />
                         </div>
@@ -199,6 +214,9 @@ const AdminAnalytic = () => {
                                 <TicketVolumeTrend 
                                     timeRange={timeRange} 
                                     data={analyticsData.ticketsByStatus}
+                                    todayData={analyticsData.todayData}
+                                    weekData={analyticsData.weekData}
+                                    monthData={analyticsData.monthData}
                                 />
                             </div>
                             <div className="w-full md:w-1/2">
@@ -218,29 +236,29 @@ const AdminAnalytic = () => {
                             <MetricCard 
                                 metricType="resolution" 
                                 value={formatMetric(analyticsData.overview.avgResolutionTime, 'time')}
-                                label="Avg Resolution Time" 
-                                trend={formatTrend(analyticsData.overview.trends.resolutionTime)}
+                                label={timeRange === 'today' ? "Today's Avg Resolution Time" : "Avg Resolution Time"}
+                                trend={null}
                                 trendIsGood={analyticsData.overview.trends.resolutionTime <= 0} 
                             />
                             <MetricCard 
                                 metricType="response" 
                                 value={formatMetric(analyticsData.overview.avgResponseTime, 'time')}
-                                label="First Response Time" 
-                                trend={formatTrend(analyticsData.overview.trends.responseTime)}
+                                label={timeRange === 'today' ? "Today's First Response Time" : "First Response Time"}
+                                trend={null}
                                 trendIsGood={analyticsData.overview.trends.responseTime <= 0} 
                             />
                             <MetricCard 
                                 metricType="sla" 
                                 value={formatMetric(analyticsData.overview.resolutionRate, 'percentage')}
-                                label="Resolution Rate" 
-                                trend={formatTrend(analyticsData.overview.trends.resolutionRate)}
+                                label={timeRange === 'today' ? "Today's Resolution Rate" : "Resolution Rate"}
+                                trend={null}
                                 trendIsGood={analyticsData.overview.trends.resolutionRate >= 0}
                             />
                             <MetricCard 
                                 metricType="ticketCount" 
                                 value={formatMetric(analyticsData.ticketsByStatus.open || 0)}
-                                label="Open Tickets" 
-                                trend={formatTrend(analyticsData.overview.trends.tickets)}
+                                label={timeRange === 'today' ? "Open Tickets Today" : "Open Tickets"}
+                                trend={null}
                                 trendIsGood={analyticsData.overview.trends.tickets <= 0} 
                             />
                         </div>
@@ -248,10 +266,16 @@ const AdminAnalytic = () => {
                         {/* Charts */}
                         <div className="flex flex-col md:flex-row gap-6">
                             <div className="w-full md:w-1/2">
-                                <ResolutionByPriority />
+                                <ResolutionByPriority 
+                                    data={analyticsData.resolutionByPriority}
+                                    timeRange={timeRange}
+                                />
                             </div>
                             <div className="w-full md:w-1/2">
-                                <ResolutionTimeTrendChart />
+                                <ResolutionTimeTrendChart 
+                                    data={analyticsData.resolutionTimeTrend}
+                                    timeRange={timeRange}
+                                />
                             </div>
                         </div>
                     </>
@@ -265,29 +289,34 @@ const AdminAnalytic = () => {
                             <MetricCard 
                                 metricType="satisfaction" 
                                 value={formatMetric(analyticsData.satisfaction.avgRating, 'rating')}
-                                label="Team Satisfaction" 
-                                trend={formatTrend(analyticsData.overview.trends.satisfaction, 'number')}
+                                label={timeRange === 'today' ? "Today's Team Satisfaction" : "Team Satisfaction"}
+                                trend={null}
                                 trendIsGood={analyticsData.overview.trends.satisfaction >= 0}
                             />
                             <MetricCard 
                                 metricType="response" 
-                                value={formatMetric(analyticsData.overview.avgResponseTime, 'time')}
-                                label="Avg Response Time" 
-                                trend={formatTrend(analyticsData.overview.trends.responseTime)}
+                                value={formatMetric(
+                                    analyticsData.agentPerformance.length > 0 
+                                        ? Math.round(analyticsData.agentPerformance.reduce((sum, agent) => sum + (agent.avgResponseTime || 0), 0) / analyticsData.agentPerformance.length)
+                                        : 0, 
+                                    'time'
+                                )}
+                                label={timeRange === 'today' ? "Today's Avg Response Time" : "Avg Response Time"}
+                                trend={null}
                                 trendIsGood={analyticsData.overview.trends.responseTime <= 0} 
                             />
                             <MetricCard 
                                 metricType="resolution" 
                                 value={formatMetric(analyticsData.overview.avgResolutionTime, 'time')}
-                                label="Avg Resolution Time" 
-                                trend={formatTrend(analyticsData.overview.trends.resolutionTime)}
+                                label={timeRange === 'today' ? "Today's Avg Resolution Time" : "Avg Resolution Time"}
+                                trend={null}
                                 trendIsGood={analyticsData.overview.trends.resolutionTime <= 0} 
                             />
                             <MetricCard 
                                 metricType="tickets" 
                                 value={formatMetric(analyticsData.overview.totalTickets)}
-                                label="Total Tickets" 
-                                trend={formatTrend(analyticsData.overview.trends.tickets)}
+                                label={timeRange === 'today' ? "Today's Total Tickets" : "Total Tickets"}
+                                trend={null}
                                 trendIsGood={analyticsData.overview.trends.tickets >= 0}
                             />
                         </div>
@@ -298,18 +327,11 @@ const AdminAnalytic = () => {
                                 data={analyticsData.agentPerformance}
                                 timeRange={timeRange}
                             />
-                            <div className="flex flex-col md:flex-row gap-6">   
-                                <div className="w-full md:w-1/2">
-                                    <FirstContactResolution 
-                                        data={analyticsData.agentPerformance}
-                                        timeRange={timeRange}
-                                    />
-                                </div>
-                                <div className="w-full md:w-1/2">
-                                    <TicketReopenRate 
-                                        timeRange={timeRange}
-                                    />
-                                </div>
+                            <div className="w-full max-w-2xl mx-auto">   
+                                <FirstContactResolution 
+                                    data={analyticsData.agentPerformance}
+                                    timeRange={timeRange}
+                                />
                             </div>
                         </div>
                     </>
@@ -323,22 +345,22 @@ const AdminAnalytic = () => {
                             <MetricCard 
                                 metricType="satisfaction" 
                                 value={formatMetric(analyticsData.satisfaction.avgRating, 'rating')}
-                                label="Satisfaction Score" 
-                                trend={formatTrend(analyticsData.overview.trends.satisfaction, 'number')}
+                                label={timeRange === 'today' ? "Today's Satisfaction Score" : "Satisfaction Score"}
+                                trend={null}
                                 trendIsGood={analyticsData.overview.trends.satisfaction >= 0}
                             />
                             <MetricCard 
                                 metricType="tickets" 
                                 value={formatMetric(analyticsData.satisfaction.totalRatings)}
-                                label="Total Responses" 
-                                trend={formatTrend(12)} // Placeholder
+                                label={timeRange === 'today' ? "Today's Total Responses" : "Total Responses"}
+                                trend={null}
                                 trendIsGood={true}
                             />
                             <MetricCard 
                                 metricType="response" 
-                                value={formatMetric(analyticsData.satisfaction.totalRatings > 0 ? 90 : 0, 'percentage')}
-                                label="Response Rate" 
-                                trend={formatTrend(3)}
+                                value={formatMetric(analyticsData.satisfaction.totalRatings > 0 ? Math.round((analyticsData.satisfaction.totalRatings / analyticsData.overview.totalTickets) * 100) : 0, 'percentage')}
+                                label={timeRange === 'today' ? "Today's Response Rate" : "Response Rate"}
+                                trend={null}
                                 trendIsGood={true}
                             />
                         </div>
@@ -354,6 +376,7 @@ const AdminAnalytic = () => {
                             <div className="w-full md:w-1/2">
                                 <RecentFeedback 
                                     data={analyticsData.recentActivity}
+                                    recentRatings={analyticsData.recentRatings}
                                     timeRange={timeRange}
                                 />
                             </div>

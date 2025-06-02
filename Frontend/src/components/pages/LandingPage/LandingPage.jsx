@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { FaFileAlt, FaBook, FaQuestion, FaComment } from 'react-icons/fa';
 import CustomerHeader from '../../common/CustomerHeader';
 import CustomerFooter from '../../common/CustomerFooter';
+import AIChatbot from '../../common/AIChatbot';
 import { useAuth } from '../../../context/AuthContext';
 
 // Import images
@@ -205,6 +206,9 @@ const LandingPage = () => {
 
       {/* Footer */}
       <CustomerFooter />
+
+      {/* AI Chatbot Widget */}
+      <AIChatbot />
     </div>
   );
 };

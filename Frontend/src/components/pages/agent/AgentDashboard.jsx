@@ -175,90 +175,95 @@ const AgentDashboard = () => {
       setLoading(true);
       setError(null); // Clear any previous errors
       
-      // Get agent-specific statistics (not general stats)
-      let statsResponse;
+      // Initialize metrics with default values
+      let currentMetrics = {
+        responseTime: { value: '0m', change: '0m', direction: 'neutral' },
+        resolutionRate: { value: '0%', change: '0%', direction: 'neutral' },
+        csatScore: { value: '0.0', change: '0', direction: 'neutral' },
+        ticketsResolved: { value: '0', change: '0', direction: 'neutral' }
+      };
+      
+      // Get agent-specific statistics
       try {
-        statsResponse = await ticketService.getAgentStats();
+        const statsResponse = await ticketService.getAgentStats();
         console.log('[AgentDashboard] Stats response:', statsResponse);
+        
+        if (statsResponse && statsResponse.success && statsResponse.stats) {
+          const stats = statsResponse.stats;
+          
+          // Update metrics with real data, handling undefined values
+          currentMetrics = {
+            responseTime: {
+              value: stats.avgResponseTime !== undefined ? `${stats.avgResponseTime}m` : '0m',
+              change: stats.responseTimeChange > 0 ? `+${stats.responseTimeChange}m` : `${stats.responseTimeChange}m`,
+              direction: stats.responseTimeChange > 0 ? 'up' : stats.responseTimeChange < 0 ? 'down' : 'neutral'
+            },
+            resolutionRate: {
+              value: stats.resolutionRate !== undefined ? `${stats.resolutionRate}%` : '0%',
+              change: stats.resolutionRateChange > 0 ? `+${stats.resolutionRateChange}%` : `${stats.resolutionRateChange}%`,
+              direction: stats.resolutionRateChange > 0 ? 'up' : stats.resolutionRateChange < 0 ? 'down' : 'neutral'
+            },
+            csatScore: {
+              value: stats.csatScore !== undefined ? stats.csatScore?.toFixed(1) : '0.0',
+              change: stats.csatScoreChange > 0 ? `+${stats.csatScoreChange}` : `${stats.csatScoreChange}`,
+              direction: stats.csatScoreChange > 0 ? 'up' : stats.csatScoreChange < 0 ? 'down' : 'neutral'
+            },
+            ticketsResolved: {
+              value: stats.ticketsResolved !== undefined ? `${stats.ticketsResolved}` : '0',
+              change: stats.ticketsResolvedChange > 0 ? `+${stats.ticketsResolvedChange}` : `${stats.ticketsResolvedChange}`,
+              direction: stats.ticketsResolvedChange > 0 ? 'up' : stats.ticketsResolvedChange < 0 ? 'down' : 'neutral'
+            }
+          };
+
+          console.log('[AgentDashboard] Updated metrics:', currentMetrics);
+
+          // Set recent activities from agent stats
+          if (stats.recentActivity && Array.isArray(stats.recentActivity)) {
+            setRecentActivities(stats.recentActivity);
+          }
+        }
       } catch (statsError) {
         console.error('[AgentDashboard] Error fetching agent stats:', statsError);
-        // Continue execution even if stats fail, just use default values
-        setMetrics({
-          responseTime: { value: '0m', change: '0m', direction: 'neutral' },
-          resolutionRate: { value: '0%', change: '0%', direction: 'neutral' },
-          csatScore: { value: '0.0', change: '0', direction: 'neutral' },
-          ticketsResolved: { value: '0', change: '0', direction: 'neutral' }
-        });
+        // Continue with default values, don't throw error
       }
       
-      if (statsResponse && statsResponse.success) {
-        const stats = statsResponse.stats;
-        
-        // Update metrics with real data, handling undefined values
-        setMetrics({
-          responseTime: {
-            value: stats.avgResponseTime ? `${stats.avgResponseTime}m` : '0m',
-            change: stats.responseTimeChange > 0 ? `+${stats.responseTimeChange}m` : `${stats.responseTimeChange}m`,
-            direction: stats.responseTimeChange > 0 ? 'up' : 'down'
-          },
-          resolutionRate: {
-            value: stats.resolutionRate !== undefined ? `${stats.resolutionRate}%` : '0%',
-            change: stats.resolutionRateChange > 0 ? `+${stats.resolutionRateChange}%` : `${stats.resolutionRateChange}%`,
-            direction: stats.resolutionRateChange > 0 ? 'up' : 'down'
-          },
-          csatScore: {
-            value: stats.csatScore !== undefined ? stats.csatScore?.toFixed(1) : '0.0',
-            change: stats.csatScoreChange > 0 ? `+${stats.csatScoreChange}` : `${stats.csatScoreChange}`,
-            direction: stats.csatScoreChange > 0 ? 'up' : 'down'
-          },
-          ticketsResolved: {
-            value: stats.ticketsResolved !== undefined ? `${stats.ticketsResolved}` : '0',
-            change: stats.ticketsResolvedChange > 0 ? `+${stats.ticketsResolvedChange}` : `${stats.ticketsResolvedChange}`,
-            direction: stats.ticketsResolvedChange > 0 ? 'up' : 'down'
-          }
-        });
-
-        // Set recent activities from agent stats
-        if (stats.recentActivity && Array.isArray(stats.recentActivity)) {
-          setRecentActivities(stats.recentActivity);
-        }
-      }
+      // Always set the metrics (either real data or defaults)
+      setMetrics(currentMetrics);
       
       // Fetch active tickets (assigned to this agent and not closed)
-      let activeTicketsResponse;
       try {
-        activeTicketsResponse = await ticketService.getTickets({
-        assignedTo: user?._id,
-        status: 'Open,In Progress,Pending'
-      });
+        const activeTicketsResponse = await ticketService.getTickets({
+          assignedTo: user?._id,
+          status: 'Open,In Progress,Pending'
+        });
         console.log('[AgentDashboard] Active tickets response:', activeTicketsResponse);
+        
+        if (activeTicketsResponse && activeTicketsResponse.tickets) {
+          // Format active tickets
+          const formattedActiveTickets = (activeTicketsResponse.tickets || []).map(ticket => ({
+            id: ticket._id,
+            ticketNumber: ticket.ticketNumber,
+            subject: ticket.subject,
+            customer: ticket.user?.name || 'Customer',
+            status: ticket.status === 'open' ? 'Awaiting your response' : 
+                    ticket.status === 'in-progress' ? 'In progress' : 'Pending'
+          }));
+          
+          setActiveTickets(formattedActiveTickets);
+        }
       } catch (ticketsError) {
         console.error('[AgentDashboard] Error fetching active tickets:', ticketsError);
         // Set empty array if tickets fail to load
         setActiveTickets([]);
       }
       
-      if (activeTicketsResponse && activeTicketsResponse.tickets) {
-      // Format active tickets
-      const formattedActiveTickets = (activeTicketsResponse.tickets || []).map(ticket => ({
-        id: ticket._id,
-        ticketNumber: ticket.ticketNumber,
-        subject: ticket.subject,
-        customer: ticket.user?.name || 'Customer',
-        status: ticket.status === 'open' ? 'Awaiting your response' : 
-                ticket.status === 'in-progress' ? 'In progress' : 'Pending'
-      }));
-      
-      setActiveTickets(formattedActiveTickets);
-      }
-      
       // Count unassigned tickets for notification badge
       try {
-      const unassignedResponse = await ticketService.getTickets({ 
-        unassigned: true 
-      });
+        const unassignedResponse = await ticketService.getTickets({ 
+          unassigned: true 
+        });
         console.log('[AgentDashboard] Unassigned tickets response:', unassignedResponse);
-      setUnassignedCount(unassignedResponse.tickets?.length || 0);
+        setUnassignedCount(unassignedResponse.tickets?.length || 0);
       } catch (unassignedError) {
         console.error('[AgentDashboard] Error fetching unassigned tickets:', unassignedError);
         // Set to 0 if fails
@@ -532,9 +537,6 @@ const AgentDashboard = () => {
               <div className="text-yellow-400">
                 <FaRegClock size={20} />
               </div>
-              <div className={`text-xs font-medium ${metrics.responseTime.direction === 'down' ? 'text-green-500' : 'text-red-500'}`}>
-                {formatMetric(metrics.responseTime.change)}
-              </div>
             </div>
             <div className="text-2xl font-bold mb-1">{formatMetric(metrics.responseTime.value)}</div>
             <div className="text-sm text-gray-500">Avg Response Time</div>
@@ -545,9 +547,6 @@ const AgentDashboard = () => {
             <div className="flex items-center justify-between mb-2">
               <div className="text-green-500">
                 <FaCheckCircle size={20} />
-              </div>
-              <div className={`text-xs font-medium ${metrics.resolutionRate.direction === 'up' ? 'text-green-500' : 'text-red-500'}`}>
-                {formatMetric(metrics.resolutionRate.change)}
               </div>
             </div>
             <div className="text-2xl font-bold mb-1">{formatMetric(metrics.resolutionRate.value)}</div>
@@ -560,9 +559,6 @@ const AgentDashboard = () => {
               <div className="text-yellow-400">
                 <FaStar size={20} />
               </div>
-              <div className={`text-xs font-medium ${metrics.csatScore.direction === 'up' ? 'text-green-500' : 'text-red-500'}`}>
-                {formatMetric(metrics.csatScore.change)}
-              </div>
             </div>
             <div className="text-2xl font-bold mb-1">{formatMetric(metrics.csatScore.value)}</div>
             <div className="text-sm text-gray-500">CSAT Score</div>
@@ -573,9 +569,6 @@ const AgentDashboard = () => {
             <div className="flex items-center justify-between mb-2">
               <div className="text-pink-400">
                 <FaTicketAlt size={20} />
-              </div>
-              <div className={`text-xs font-medium ${metrics.ticketsResolved.direction === 'up' ? 'text-green-500' : 'text-red-500'}`}>
-                {formatMetric(metrics.ticketsResolved.change)}
               </div>
             </div>
             <div className="text-2xl font-bold mb-1">{formatMetric(metrics.ticketsResolved.value)}</div>

@@ -1,12 +1,20 @@
 import dotenv from 'dotenv';
-dotenv.config();
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config({ path: path.join(__dirname, '.env') });
 
 // Test environment variables
 console.log('Testing environment variables:', {
   NODE_ENV: process.env.NODE_ENV,
   EMAIL_USER: process.env.EMAIL_USER,
   EMAIL_PASSWORD: process.env.EMAIL_PASSWORD ? 'Set' : 'Not Set',
-  EMAIL_PASSWORD_LENGTH: process.env.EMAIL_PASSWORD ? process.env.EMAIL_PASSWORD.length : 0
+  EMAIL_PASSWORD_LENGTH: process.env.EMAIL_PASSWORD ? process.env.EMAIL_PASSWORD.length : 0,
+  OPENAI_API_KEY: process.env.OPENAI_API_KEY ? 'Set' : 'Not Set',
+  OPENAI_API_KEY_LENGTH: process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.length : 0
 });
 
 import express from 'express';
@@ -24,6 +32,7 @@ import ticketRoutes from './routes/ticketRoutes.js';
 import articleRoutes from './routes/articleRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
+import chatbotRoutes from './routes/chatbotRoutes.js';
 import './scheduler/escalationJob.js'; // Import the escalation job
 import User from './models/User.js';
 
@@ -116,6 +125,7 @@ app.use('/api/tickets', ticketRoutes);
 app.use('/api/articles', articleRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/chatbot', chatbotRoutes);
 
 // 404 handler
 app.use((req, res) => {

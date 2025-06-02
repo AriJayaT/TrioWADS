@@ -12,12 +12,14 @@ import {
   getAgentRatings,
   getTicketRating,
   removeTicketFromView,
-  escalateTicket
+  escalateTicket,
+  getRecentRatings
 } from '../controllers/ticketController.js';
 import { protect, authorize } from '../middleware/auth.js';
 import Ticket from '../models/Ticket.js';
 import User from '../models/User.js';
 import Notification from '../models/Notification.js';
+import Rating from '../models/Rating.js';
 
 const router = express.Router();
 
@@ -592,6 +594,54 @@ router.post('/debug/force-assign/:ticketId/:agentId', protect, authorize('admin'
   } catch (error) {
     console.error('Debug force assign error:', error);
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Test endpoint to create sample data for metrics testing (remove in production)
+router.post('/test/create-sample-data', protect, authorize('admin'), async (req, res) => {
+  try {
+    const agentId = req.body.agentId || req.user.id;
+    
+    // Create sample tickets with various statuses
+    const sampleTickets = [];
+    for (let i = 0; i < 5; i++) {
+      const ticket = new Ticket({
+        subject: `Sample Ticket ${i + 1}`,
+        description: 'This is a sample ticket for testing metrics',
+        priority: ['low', 'medium', 'high'][i % 3],
+        assignedTo: agentId,
+        status: i < 2 ? 'resolved' : 'open',
+        resolvedAt: i < 2 ? new Date() : null,
+        user: req.user.id // Using current user as customer for simplicity
+      });
+      
+      await ticket.save();
+      sampleTickets.push(ticket);
+    }
+    
+    // Create sample ratings
+    for (let i = 0; i < 3; i++) {
+      const rating = new Rating({
+        ticket: sampleTickets[i]._id,
+        user: req.user.id,
+        agent: agentId,
+        rating: 4 + (i % 2), // Ratings of 4 or 5
+        feedback: `Great service on ticket ${i + 1}`
+      });
+      
+      await rating.save();
+    }
+    
+    res.json({
+      success: true,
+      message: 'Sample data created successfully',
+      tickets: sampleTickets.length,
+      ratings: 3
+    });
+    
+  } catch (error) {
+    console.error('Error creating sample data:', error);
+    res.status(500).json({ error: 'Failed to create sample data' });
   }
 });
 

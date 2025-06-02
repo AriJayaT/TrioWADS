@@ -1,6 +1,7 @@
 import React from 'react';
 import CustomerHeader from '../../common/CustomerHeader';
 import CustomerFooter from '../../common/CustomerFooter';
+import AIChatbot from '../../common/AIChatbot';
 import HelpCenter from './HelpCenter';
 
 const StandaloneHelpCenter = () => {
@@ -16,6 +17,9 @@ const StandaloneHelpCenter = () => {
 
       {/* Footer */}
       <CustomerFooter />
+
+      {/* AI Chatbot Widget */}
+      <AIChatbot />
     </div>
   );
 };
