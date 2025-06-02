@@ -3,12 +3,12 @@ name: YipHelp CI/CD
 on:
   push:
     branches:
-      - master
+      - FinalWebApp
     paths-ignore:
       - "README.md"
   pull_request:
     branches:
-      - master
+      - FinalWebApp
 
 jobs:
   continuous-integration:
