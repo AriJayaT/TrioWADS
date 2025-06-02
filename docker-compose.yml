@@ -27,3 +27,4 @@ services:
       - backend
     ports:
       - "3005:3005"
+      
