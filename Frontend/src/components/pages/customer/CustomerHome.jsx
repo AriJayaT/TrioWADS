@@ -9,6 +9,7 @@ const CustomerHome = () => {
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
   const { user } = useAuth();
   const { socket, isConnected } = useSocket();
   const isMountedRef = useRef(true);
@@ -111,6 +112,17 @@ const CustomerHome = () => {
   const totalTickets = tickets.length;
   const openTickets = tickets.filter(t => t.status === 'open').length;
   const resolvedTickets = tickets.filter(t => t.status === 'closed').length;
+
+  // Filter tickets based on search term
+  const filteredTickets = tickets.filter(ticket => {
+    if (!searchTerm) return true;
+    
+    return (
+      ticket.ticketNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      ticket.subject?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      ticket.category?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  });
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
@@ -242,6 +254,8 @@ const CustomerHome = () => {
                 type="text" 
                 placeholder="Search tickets..." 
                 className="border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
             <div>
@@ -251,12 +265,14 @@ const CustomerHome = () => {
             </div>
           </div>
 
-          {tickets.length === 0 ? (
+          {filteredTickets.length === 0 ? (
             <div className="text-center py-12">
               <FaTicketAlt className="mx-auto h-12 w-12 text-gray-300" />
-              <h3 className="mt-2 text-lg font-medium text-gray-900">No tickets yet</h3>
+              <h3 className="mt-2 text-lg font-medium text-gray-900">No tickets found</h3>
               <p className="mt-1 text-sm text-gray-500">
-                You don't have any support tickets. Need help? Create your first ticket.
+                {tickets.length === 0 
+                  ? "You don't have any support tickets. Need help? Create your first ticket."
+                  : "No tickets match your search criteria. Try adjusting your search term."}
               </p>
               <div className="mt-6">
                 <Link
@@ -295,7 +311,7 @@ const CustomerHome = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {tickets.slice(0, 3).map((ticket) => (
+                {filteredTickets.slice(0, 3).map((ticket) => (
                   <tr key={ticket._id}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {ticket.ticketNumber}

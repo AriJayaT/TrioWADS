@@ -149,152 +149,62 @@ const TicketList = () => {
   // Ticket event handlers
   const handleTicketAssigned = useCallback((assignedTicket) => {
     console.log(`[${COMPONENT_NAME}] =====================================`);
-    console.log(`[${COMPONENT_NAME}] TICKET ASSIGNED EVENT RECEIVED`);
+    console.log(`[${COMPONENT_NAME}] 🎫 TICKET ASSIGNED EVENT RECEIVED`);
     console.log(`[${COMPONENT_NAME}] =====================================`);
-    console.log(`[${COMPONENT_NAME}] Raw ticket data structure:`, JSON.stringify(assignedTicket, null, 2));
-    console.log(`[${COMPONENT_NAME}] Ticket assigned event received:`, {
-      ticketId: assignedTicket?._id,
-      assignedTo: assignedTicket?.assignedTo,
-      currentUserId: user._id,
-      agentType: agentType,
-      rawData: assignedTicket
-    });
-    
+    console.log(`[${COMPONENT_NAME}] Assignment data:`, assignedTicket);
+
     if (!isMountedRef.current) {
-      console.log(`[${COMPONENT_NAME}] Component unmounted, ignoring ticket assignment`);
+      console.log(`[${COMPONENT_NAME}] ❌ Component unmounted, ignoring ticket assignment`);
       return;
     }
-    
-    if (!assignedTicket) {
-      console.error(`[${COMPONENT_NAME}] No ticket data received in assignment event`);
-      return;
-    }
-    
-    const ticketData = assignedTicket.ticket || assignedTicket;
-    const ticketId = ticketData._id || ticketData.id;
-    
-    console.log(`[${COMPONENT_NAME}] Processing ticket assignment:`, {
-      ticketId,
-      ticketSubject: ticketData.subject,
-      assignedToId: ticketData.assignedTo?._id || ticketData.assignedTo,
-      assignedToName: ticketData.assignedTo?.name,
-      currentUserId: user._id
-    });
-    
-    // ===================================================================
-    // STEP 1: ALL AGENTS remove the ticket from unassigned list
-    // This matches how admin AgentManagement works
-    // ===================================================================
+
+    // Immediately remove from unassigned list regardless of who it was assigned to
     setUnassignedTickets(prev => {
-      const filtered = prev.filter(t => (t._id !== ticketId && t.id !== ticketId));
-      console.log(`[${COMPONENT_NAME}] ✅ Removed ticket ${ticketId} from unassigned. Count: ${prev.length} -> ${filtered.length}`);
-      return filtered;
+      const ticketId = assignedTicket.ticketId || assignedTicket._id;
+      console.log(`[${COMPONENT_NAME}] Removing ticket from unassigned list:`, {
+        ticketId,
+        currentUnassignedCount: prev.length
+      });
+      return prev.filter(t => t._id !== ticketId);
     });
-    
-    // ===================================================================
-    // STEP 2: Only the assigned agent adds it to their assigned list
-    // CRITICAL FIX: Do NOT increment assigned count here - let ticket_updated handle that
-    // ===================================================================
-    const assignedToId = ticketData.assignedTo?._id || ticketData.assignedTo;
+
+    // If assigned to current user, add to assigned list
+    const assignedToId = assignedTicket.assignedTo || assignedTicket.assignedToId;
     const isAssignedToMe = assignedToId && (
-      assignedToId === user._id || 
+      assignedToId === user._id ||
       assignedToId.toString() === user._id.toString() ||
       assignedToId === user.id ||
       assignedToId.toString() === user.id.toString()
     );
-    
-    console.log(`[${COMPONENT_NAME}] =====================================`);
-    console.log(`[${COMPONENT_NAME}] ASSIGNMENT CHECK DETAILS`);
-    console.log(`[${COMPONENT_NAME}] =====================================`);
+
     console.log(`[${COMPONENT_NAME}] Assignment check:`, {
       assignedToId,
-      assignedToIdType: typeof assignedToId,
       currentUserId: user._id,
-      currentUserIdType: typeof user._id,
-      currentUserIdAlt: user.id,
-      isAssignedToMe,
-      directMatch: assignedToId === user._id,
-      stringMatch: assignedToId?.toString() === user._id?.toString(),
-      altIdMatch: assignedToId === user.id,
-      altStringMatch: assignedToId?.toString() === user.id?.toString()
+      currentUserAltId: user.id,
+      isAssignedToMe
     });
-    
-    // Update assigned tickets list only if this ticket is assigned to me
-    if (isAssignedToMe) {
-      console.log(`[${COMPONENT_NAME}] =====================================`);
-      console.log(`[${COMPONENT_NAME}] UPDATING MY ASSIGNED TICKETS - ASSIGNED TO ME`);
-      console.log(`[${COMPONENT_NAME}] =====================================`);
-      console.log(`[${COMPONENT_NAME}] Ticket ${ticketId} assigned to current agent - updating state`);
-      
-      setTickets(prev => {
-        const exists = prev.some(t => (t._id === ticketId || t.id === ticketId));
-        if (!exists) {
-          console.log(`[${COMPONENT_NAME}] ✅ Adding new assigned ticket to list:`, ticketData.subject);
-          console.log(`[${COMPONENT_NAME}] Current assigned tickets count:`, prev.length);
-          console.log(`[${COMPONENT_NAME}] New assigned tickets count will be:`, prev.length + 1);
-          return [ticketData, ...prev];
-        } else {
-          console.log(`[${COMPONENT_NAME}] ✅ Updating existing assigned ticket:`, ticketData.subject);
-          return prev.map(t => (t._id === ticketId || t.id === ticketId) ? ticketData : t);
-        }
-      });
-      
-      // CRITICAL BUG FIX: DO NOT increment assigned count here!
-      // The assigned count will be updated by fetchAssignedCount() or other mechanisms
-      // Incrementing here causes double-counting because this event fires for ALL agents
-      console.log(`[${COMPONENT_NAME}] ✅ My assigned ticket list updated successfully`);
-      console.log(`[${COMPONENT_NAME}] NOTE: Assigned count will be updated by fetchAssignedCount(), not here`);
-      
-      // Instead, trigger an immediate refresh of the assigned count to keep it accurate
-      setTimeout(() => {
-        if (isMountedRef.current) {
-          console.log(`[${COMPONENT_NAME}] Refreshing assigned count after ticket assignment`);
-          fetchAssignedCount();
-        }
-      }, 500);
-      
-    } else {
-      console.log(`[${COMPONENT_NAME}] =====================================`);
-      console.log(`[${COMPONENT_NAME}] NOT ASSIGNED TO ME - ONLY REMOVED FROM UNASSIGNED`);
-      console.log(`[${COMPONENT_NAME}] =====================================`);
-      console.log(`[${COMPONENT_NAME}] Ticket ${ticketId} assigned to different agent (${assignedToId}), removed from unassigned list only`);
-    }
-    
-    console.log(`[${COMPONENT_NAME}] ✅ Ticket assignment processing completed`);
-  }, [user._id, user.id, agentType, fetchAssignedCount]);
 
-  const handleNewTicket = useCallback((newTicket) => {
-    console.log(`[${COMPONENT_NAME}] Received new_ticket:`, {
-      ticket: newTicket,
-      agentType: agentType
-    });
-    if (!isMountedRef.current) return;
-    
-    const ticketData = newTicket.ticket || newTicket;
-    // Only add to unassigned if it matches agent type and is not already assigned
-    if (!ticketData.assignedTo) {
-      const matchesAgentType = agentType === 'Senior' ? 
-        ticketData.priority === 'high' : 
-        (ticketData.priority === 'low' || ticketData.priority === 'medium');
-      
-      console.log(`[${COMPONENT_NAME}] New ticket priority check:`, {
-        ticketPriority: ticketData.priority,
-        agentType: agentType,
-        matchesAgentType: matchesAgentType
-      });
-      
-      if (matchesAgentType) {
-        setUnassignedTickets((prev) => {
-          const exists = prev.some(t => (t._id === ticketData._id || t.id === ticketData._id));
-          if (!exists) {
-            console.log(`[${COMPONENT_NAME}] Adding new unassigned ticket:`, ticketData.subject);
-            return [ticketData, ...prev];
+    if (isAssignedToMe) {
+      // Fetch fresh ticket data to ensure we have complete information
+      ticketService.getTicket(assignedTicket.ticketId || assignedTicket._id)
+        .then(response => {
+          if (response && response.ticket) {
+            setTickets(prev => {
+              const exists = prev.some(t => t._id === response.ticket._id);
+              if (!exists) {
+                console.log(`[${COMPONENT_NAME}] Adding newly assigned ticket to list`);
+                return [response.ticket, ...prev];
+              }
+              return prev;
+            });
+            fetchAssignedCount();
           }
-          return prev.map(t => (t._id === ticketData._id || t.id === ticketData._id) ? ticketData : t);
+        })
+        .catch(err => {
+          console.error(`[${COMPONENT_NAME}] Error fetching assigned ticket:`, err);
         });
-      }
     }
-  }, [agentType]);
+  }, [user._id, user.id, fetchAssignedCount]);
 
   const handleTicketUpdate = useCallback((updatedTicket) => {
     console.log(`[${COMPONENT_NAME}] =====================================`);
@@ -328,39 +238,35 @@ const TicketList = () => {
       isAssignedToMe
     });
     
-    // ===================================================================
-    // CRITICAL FIX: Only update EXISTING tickets, don't handle new assignments
-    // New assignments are handled by handleTicketAssigned to avoid conflicts
-    // ===================================================================
-    
-    // Update assigned tickets ONLY if the ticket already exists in the list
+    // Update assigned tickets list
     setTickets((prev) => {
-      const exists = prev.some(t => (t._id === ticketId || t.id === ticketId));
-      if (exists) {
-        if (isAssignedToMe) {
-          // Update existing assigned ticket
+      // If ticket is assigned to me, add or update it
+      if (isAssignedToMe) {
+        const exists = prev.some(t => (t._id === ticketId || t.id === ticketId));
+        if (exists) {
+          // Update existing ticket
           console.log(`[${COMPONENT_NAME}] ✅ Updating existing assigned ticket:`, ticketData.subject);
           return prev.map(t => (t._id === ticketId || t.id === ticketId) ? ticketData : t);
         } else {
-          // Ticket was reassigned to someone else, remove it
-          console.log(`[${COMPONENT_NAME}] ✅ Removing reassigned ticket from my list:`, ticketData.subject);
-          return prev.filter(t => (t._id !== ticketId && t.id !== ticketId));
+          // Add new ticket
+          console.log(`[${COMPONENT_NAME}] ✅ Adding newly assigned ticket:`, ticketData.subject);
+          return [ticketData, ...prev];
         }
       } else {
-        // For NEW assignments, let handleTicketAssigned handle it
-        console.log(`[${COMPONENT_NAME}] Ticket not in assigned list - letting handleTicketAssigned handle new assignments`);
-        return prev;
+        // Remove ticket if it's no longer assigned to me
+        console.log(`[${COMPONENT_NAME}] ✅ Removing unassigned ticket from my list:`, ticketData.subject);
+        return prev.filter(t => (t._id !== ticketId && t.id !== ticketId));
       }
     });
 
-    // Update unassigned tickets - remove if assigned, update if still unassigned
+    // Update unassigned tickets list
     setUnassignedTickets((prev) => {
       // If now assigned, remove from unassigned
       if (ticketData.assignedTo) {
         console.log(`[${COMPONENT_NAME}] ✅ Removing assigned ticket from unassigned list:`, ticketData.subject);
         return prev.filter(t => (t._id !== ticketId && t.id !== ticketId));
       }
-      // If still unassigned and matches agent type, update or add
+      // If unassigned and matches agent type, update or add
       if (
         (agentType === 'Senior' && ticketData.priority === 'high') ||
         (agentType !== 'Senior' && (ticketData.priority === 'low' || ticketData.priority === 'medium'))
@@ -380,6 +286,105 @@ const TicketList = () => {
     });
   }, [user._id, user.id, agentType]);
 
+  const handleNewTicket = useCallback((ticket) => {
+    console.log(`[${COMPONENT_NAME}] =====================================`);
+    console.log(`[${COMPONENT_NAME}] 🎟️ NEW TICKET EVENT RECEIVED`);
+    console.log(`[${COMPONENT_NAME}] =====================================`);
+    console.log(`[${COMPONENT_NAME}] Raw ticket data:`, ticket);
+    
+    if (!isMountedRef.current) {
+      console.log(`[${COMPONENT_NAME}] ❌ Component unmounted, ignoring new ticket`);
+      return;
+    }
+    
+    const ticketData = ticket.ticket || ticket;
+    console.log(`[${COMPONENT_NAME}] Processed ticket data:`, {
+      ticketId: ticketData._id,
+      subject: ticketData.subject,
+      priority: ticketData.priority,
+      status: ticketData.status,
+      assignedTo: ticketData.assignedTo,
+      agentType: agentType
+    });
+    
+    const assignedToId = ticketData.assignedTo?._id || ticketData.assignedTo;
+    const isAssignedToMe = assignedToId && (
+      assignedToId === user._id || 
+      assignedToId.toString() === user._id.toString() ||
+      assignedToId === user.id ||
+      assignedToId.toString() === user.id.toString()
+    );
+
+    console.log(`[${COMPONENT_NAME}] Assignment check:`, {
+      assignedToId,
+      currentUserId: user._id,
+      currentUserAltId: user.id,
+      isAssignedToMe
+    });
+
+    // Add to assigned tickets if assigned to me
+    if (isAssignedToMe) {
+      console.log(`[${COMPONENT_NAME}] ✅ Ticket is assigned to current agent`);
+      setTickets(prev => {
+        const exists = prev.some(t => t._id === ticketData._id);
+        console.log(`[${COMPONENT_NAME}] Updating assigned tickets list:`, {
+          ticketId: ticketData._id,
+          alreadyExists: exists,
+          currentCount: prev.length,
+          willAdd: !exists
+        });
+        
+        if (!exists) {
+          console.log(`[${COMPONENT_NAME}] Adding new ticket to assigned list`);
+          return [ticketData, ...prev];
+        }
+        return prev;
+      });
+    }
+
+    // Check if ticket should be added to unassigned list based on priority and agent type
+    const matchesAgentType = (
+      (agentType === 'Senior' && ticketData.priority === 'high') ||
+      (agentType !== 'Senior' && (ticketData.priority === 'low' || ticketData.priority === 'medium'))
+    );
+
+    console.log(`[${COMPONENT_NAME}] Agent type matching:`, {
+      ticketPriority: ticketData.priority,
+      agentType: agentType,
+      matchesAgentType: matchesAgentType,
+      isUnassigned: !ticketData.assignedTo
+    });
+
+    if (!ticketData.assignedTo && matchesAgentType) {
+      console.log(`[${COMPONENT_NAME}] ✅ Adding ticket to unassigned list - matches agent type`);
+      setUnassignedTickets(prev => {
+        const exists = prev.some(t => t._id === ticketData._id);
+        console.log(`[${COMPONENT_NAME}] Updating unassigned tickets list:`, {
+          ticketId: ticketData._id,
+          alreadyExists: exists,
+          currentCount: prev.length,
+          willAdd: !exists
+        });
+        
+        if (!exists) {
+          console.log(`[${COMPONENT_NAME}] Adding new ticket to unassigned list`);
+          return [ticketData, ...prev];
+        }
+        return prev;
+      });
+    } else {
+      console.log(`[${COMPONENT_NAME}] ℹ️ Skipping unassigned list:`, {
+        reason: ticketData.assignedTo ? 'Already assigned' : 'Does not match agent type'
+      });
+    }
+
+    // Update counts if needed
+    if (isAssignedToMe) {
+      console.log(`[${COMPONENT_NAME}] Updating assigned count`);
+      fetchAssignedCount();
+    }
+  }, [user._id, user.id, agentType, fetchAssignedCount]);
+
   const handleNewReply = useCallback((data) => {
     console.log(`[${COMPONENT_NAME}] New reply received:`, data);
     if (!isMountedRef.current) return;
@@ -393,39 +398,140 @@ const TicketList = () => {
 
   // Add notification event handlers
   const handleNewNotification = useCallback((notification) => {
-    console.log(`[${COMPONENT_NAME}] New notification received:`, {
+    console.log(`[${COMPONENT_NAME}] =====================================`);
+    console.log(`[${COMPONENT_NAME}] 🔔 NEW NOTIFICATION RECEIVED`);
+    console.log(`[${COMPONENT_NAME}] =====================================`);
+    console.log(`[${COMPONENT_NAME}] Full notification data:`, {
       notification,
       userRole: user?.role,
       notificationRole: notification.role,
       notificationType: notification.type,
-      ticketId: notification.ticketId
+      ticketId: notification.ticketId,
+      assignedTo: notification.assignedTo,
+      currentUserId: user?._id,
+      currentUserAltId: user?.id,
+      timestamp: new Date().toISOString()
     });
     
-    if (!isMountedRef.current) return;
+    if (!isMountedRef.current) {
+      console.log(`[${COMPONENT_NAME}] ❌ Component unmounted, ignoring notification`);
+      return;
+    }
     
     // Only process notifications meant for agents
     if (notification.role === 'agent') {
-      console.log(`[${COMPONENT_NAME}] Processing agent notification for ${notification.type}`);
+      console.log(`[${COMPONENT_NAME}] ✅ Processing agent notification for ${notification.type}`);
       
-      // For ticket assignments, let the direct ticket_assigned event handle the update
-      // Only refresh data for notification types that don't have direct event handlers
-      if (notification.type === 'ticket_reply' || 
+      // For ticket assignments, update the lists immediately
+      if (notification.type === 'ticket_assigned' && notification.ticketId) {
+        console.log(`[${COMPONENT_NAME}] =====================================`);
+        console.log(`[${COMPONENT_NAME}] 🎫 PROCESSING TICKET ASSIGNMENT`);
+        console.log(`[${COMPONENT_NAME}] =====================================`);
+        console.log(`[${COMPONENT_NAME}] Assignment details:`, {
+          ticketId: notification.ticketId,
+          assignedTo: notification.assignedTo,
+          currentUserId: user._id,
+          currentUserAltId: user.id,
+          isAssignedToMe: notification.assignedTo === user._id || notification.assignedTo === user.id
+        });
+        
+        // Remove from unassigned list immediately
+        setUnassignedTickets(prev => {
+          const ticketExists = prev.some(t => t._id === notification.ticketId);
+          const filtered = prev.filter(t => t._id !== notification.ticketId);
+          console.log(`[${COMPONENT_NAME}] Unassigned list update:`, {
+            ticketId: notification.ticketId,
+            existedInList: ticketExists,
+            previousCount: prev.length,
+            newCount: filtered.length,
+            wasRemoved: prev.length !== filtered.length
+          });
+          return filtered;
+        });
+
+        // If assigned to current user, fetch the ticket and add to assigned list
+        const isAssignedToMe = notification.assignedTo === user._id || notification.assignedTo === user.id;
+        console.log(`[${COMPONENT_NAME}] Assignment check:`, {
+          assignedTo: notification.assignedTo,
+          currentUserId: user._id,
+          currentUserAltId: user.id,
+          isAssignedToMe
+        });
+
+        if (isAssignedToMe) {
+          console.log(`[${COMPONENT_NAME}] ✅ Ticket assigned to current user, fetching details`);
+          
+          // Fetch the ticket details
+          ticketService.getTicket(notification.ticketId)
+            .then(response => {
+              console.log(`[${COMPONENT_NAME}] Ticket fetch response:`, {
+                success: !!response,
+                hasTicket: !!response?.ticket,
+                ticketId: response?.ticket?._id,
+                status: response?.ticket?.status
+              });
+
+              if (response && response.ticket) {
+                setTickets(prev => {
+                  const exists = prev.some(t => t._id === notification.ticketId);
+                  console.log(`[${COMPONENT_NAME}] Updating assigned tickets list:`, {
+                    ticketId: notification.ticketId,
+                    alreadyExists: exists,
+                    currentCount: prev.length,
+                    willAdd: !exists,
+                    newCount: exists ? prev.length : prev.length + 1
+                  });
+                  
+                  if (!exists) {
+                    return [response.ticket, ...prev];
+                  }
+                  return prev;
+                });
+                
+                // Update assigned count
+                console.log(`[${COMPONENT_NAME}] Triggering assigned count update`);
+                fetchAssignedCount();
+              } else {
+                console.error(`[${COMPONENT_NAME}] ❌ Invalid ticket data received:`, response);
+              }
+            })
+            .catch(err => {
+              console.error(`[${COMPONENT_NAME}] ❌ Error fetching assigned ticket:`, {
+                ticketId: notification.ticketId,
+                error: err.message,
+                stack: err.stack
+              });
+            });
+        } else {
+          console.log(`[${COMPONENT_NAME}] ℹ️ Ticket assigned to different agent, skipping fetch`);
+        }
+      }
+      
+      // For other notification types that require data refresh
+      else if (notification.type === 'ticket_reply' || 
           notification.type === 'ticket_escalated' || 
           notification.type === 'ticket_closed') {
-        console.log(`[${COMPONENT_NAME}] Notification type "${notification.type}" requires data refresh`);
+        console.log(`[${COMPONENT_NAME}] =====================================`);
+        console.log(`[${COMPONENT_NAME}] 🔄 OTHER NOTIFICATION TYPE: ${notification.type}`);
+        console.log(`[${COMPONENT_NAME}] =====================================`);
+        
         // Debounced refresh to prevent multiple rapid updates
         setTimeout(() => {
           if (isMountedRef.current) {
             console.log(`[${COMPONENT_NAME}] Executing data refresh for notification: ${notification.type}`);
             fetchTickets(agentType);
             fetchAssignedCount();
+          } else {
+            console.log(`[${COMPONENT_NAME}] ❌ Skipping refresh - component unmounted`);
           }
-        }, 500); // Reduced timeout for faster response
+        }, 500);
       } else {
-        console.log(`[${COMPONENT_NAME}] Notification type "${notification.type}" handled by direct ticket events, skipping refresh`);
+        console.log(`[${COMPONENT_NAME}] ℹ️ Unhandled notification type: ${notification.type}`);
       }
+    } else {
+      console.log(`[${COMPONENT_NAME}] ℹ️ Ignoring non-agent notification:`, notification.role);
     }
-  }, [user?.role, agentType, fetchTickets, fetchAssignedCount]);
+  }, [user?.role, user._id, user.id, agentType, fetchTickets, fetchAssignedCount]);
 
   const handleNotificationUpdate = useCallback((notification) => {
     console.log(`[${COMPONENT_NAME}] Notification updated:`, notification);
@@ -450,8 +556,6 @@ const TicketList = () => {
   useEffect(() => {
     if (!socket || !isConnected) {
       console.log(`[${COMPONENT_NAME}] Socket not connected or not authenticated`);
-      console.log(`[${COMPONENT_NAME}] Socket:`, !!socket, 'isConnected:', isConnected);
-      console.log(`[${COMPONENT_NAME}] Current user:`, user?.name, user?.role, user?.agentType);
       return;
     }
 
@@ -461,132 +565,70 @@ const TicketList = () => {
     console.log(`[${COMPONENT_NAME}] Socket ID:`, socket.id);
     console.log(`[${COMPONENT_NAME}] Socket connected:`, socket.connected);
     console.log(`[${COMPONENT_NAME}] Context isConnected:`, isConnected);
-    console.log(`[${COMPONENT_NAME}] User:`, {
-      id: user?._id,
-      name: user?.name,
-      role: user?.role,
-      agentType: user?.agentType
-    });
+    console.log(`[${COMPONENT_NAME}] User:`, user);
     console.log(`[${COMPONENT_NAME}] Setting up socket event handlers`);
 
     // Subscribe to events with component identifier
     try {
-      // ===================================================================
-      // DEBUG: Add listeners for ALL possible ticket-related events
-      // ===================================================================
-      const ticketAssignedDebug = createDebugHandler('ticket_assigned');
-      const ticketUpdatedDebug = createDebugHandler('ticket_updated');
-      const newTicketDebug = createDebugHandler('new_ticket');
-      const newReplyDebug = createDebugHandler('new_reply');
-      const ticketStatusChangeDebug = createDebugHandler('ticket_status_change');
-      const ticketStatusChangedDebug = createDebugHandler('ticket_status_changed');
-      const ticketClosedDebug = createDebugHandler('ticket_closed');
-      const ticketResolvedDebug = createDebugHandler('ticket_resolved');
-      const newNotificationDebug = createDebugHandler('new_notification');
-      const notificationUpdatedDebug = createDebugHandler('notification_updated');
-      const notificationsMarkedReadDebug = createDebugHandler('notifications_marked_read');
-
-      // Add debug listeners for all events
-      socket.on('ticket_assigned', ticketAssignedDebug);
-      socket.on('ticket_updated', ticketUpdatedDebug);
-      socket.on('new_ticket', newTicketDebug);
-      socket.on('new_reply', newReplyDebug);
-      socket.on('ticket_status_change', ticketStatusChangeDebug);
-      socket.on('ticket_status_changed', ticketStatusChangedDebug);
-      socket.on('ticket_closed', ticketClosedDebug);
-      socket.on('ticket_resolved', ticketResolvedDebug);
-      socket.on('new_notification', newNotificationDebug);
-      socket.on('notification_updated', notificationUpdatedDebug);
-      socket.on('notifications_marked_read', notificationsMarkedReadDebug);
-
-      // ===================================================================
-      // ACTUAL EVENT HANDLERS
-      // ===================================================================
-      // Existing ticket events
+      // Handle ticket assignments first
       socket.on('ticket_assigned', handleTicketAssigned);
-      socket.on('new_ticket', handleNewTicket);
+      
+      // Then handle any subsequent updates
       socket.on('ticket_updated', handleTicketUpdate);
+      socket.on('new_ticket', handleNewTicket);
       socket.on('new_reply', handleNewReply);
       socket.on('ticket_status_change', handleTicketUpdate);
       socket.on('ticket_status_changed', handleTicketUpdate);
       socket.on('ticket_closed', handleTicketUpdate);
       socket.on('ticket_resolved', handleTicketUpdate);
       
-      // Add notification events for real-time updates
+      // Add notification events
       socket.on('new_notification', handleNewNotification);
       socket.on('notification_updated', handleNotificationUpdate);
       socket.on('notifications_marked_read', handleNotificationsMarkedRead);
-      
-      console.log(`[${COMPONENT_NAME}] ✅ All socket event handlers registered including notifications AND debug handlers`);
 
-      // Return cleanup function
+      console.log(`[${COMPONENT_NAME}] ✅ All socket event handlers registered successfully`);
+
       return () => {
         console.log(`[${COMPONENT_NAME}] Cleaning up socket event subscriptions`);
-        try {
-          if (socket) {
-            // Clean up ticket events
-            socket.off('ticket_assigned', handleTicketAssigned);
-            socket.off('new_ticket', handleNewTicket);
-            socket.off('ticket_updated', handleTicketUpdate);
-            socket.off('new_reply', handleNewReply);
-            socket.off('ticket_status_change', handleTicketUpdate);
-            socket.off('ticket_status_changed', handleTicketUpdate);
-            socket.off('ticket_closed', handleTicketUpdate);
-            socket.off('ticket_resolved', handleTicketUpdate);
-            
-            // Clean up notification events
-            socket.off('new_notification', handleNewNotification);
-            socket.off('notification_updated', handleNotificationUpdate);
-            socket.off('notifications_marked_read', handleNotificationsMarkedRead);
-
-            // Clean up debug handlers
-            socket.off('ticket_assigned', ticketAssignedDebug);
-            socket.off('ticket_updated', ticketUpdatedDebug);
-            socket.off('new_ticket', newTicketDebug);
-            socket.off('new_reply', newReplyDebug);
-            socket.off('ticket_status_change', ticketStatusChangeDebug);
-            socket.off('ticket_status_changed', ticketStatusChangedDebug);
-            socket.off('ticket_closed', ticketClosedDebug);
-            socket.off('ticket_resolved', ticketResolvedDebug);
-            socket.off('new_notification', newNotificationDebug);
-            socket.off('notification_updated', notificationUpdatedDebug);
-            socket.off('notifications_marked_read', notificationsMarkedReadDebug);
-          }
-        } catch (error) {
-          console.error(`[${COMPONENT_NAME}] Error cleaning up socket events:`, error);
-        }
-      };
-    } catch (error) {
-      console.error(`[${COMPONENT_NAME}] Error subscribing to socket events:`, error);
-    }
-  }, [socket, isConnected, createDebugHandler, handleTicketAssigned, handleNewTicket, handleTicketUpdate, handleNewReply, handleNewNotification, handleNotificationUpdate, handleNotificationsMarkedRead]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      isMountedRef.current = false;
-      try {
         if (socket) {
-          // Clean up ticket events
           socket.off('ticket_assigned', handleTicketAssigned);
-          socket.off('new_ticket', handleNewTicket);
           socket.off('ticket_updated', handleTicketUpdate);
+          socket.off('new_ticket', handleNewTicket);
           socket.off('new_reply', handleNewReply);
           socket.off('ticket_status_change', handleTicketUpdate);
           socket.off('ticket_status_changed', handleTicketUpdate);
           socket.off('ticket_closed', handleTicketUpdate);
           socket.off('ticket_resolved', handleTicketUpdate);
-          
-          // Clean up notification events
           socket.off('new_notification', handleNewNotification);
           socket.off('notification_updated', handleNotificationUpdate);
           socket.off('notifications_marked_read', handleNotificationsMarkedRead);
         }
-      } catch (error) {
-        console.error(`[${COMPONENT_NAME}] Error cleaning up socket events on unmount:`, error);
-      }
+      };
+    } catch (error) {
+      console.error(`[${COMPONENT_NAME}] Error setting up socket events:`, error);
+    }
+  }, [
+    socket, 
+    isConnected,
+    user,
+    handleTicketAssigned,
+    handleTicketUpdate,
+    handleNewTicket,
+    handleNewReply,
+    handleNewNotification,
+    handleNotificationUpdate,
+    handleNotificationsMarkedRead
+  ]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      console.log(`[${COMPONENT_NAME}] Component unmounting - cleaning up`);
+      isMountedRef.current = false;
     };
-  }, [socket, handleTicketAssigned, handleNewTicket, handleTicketUpdate, handleNewReply, handleNewNotification, handleNotificationUpdate, handleNotificationsMarkedRead]);
+  }, []);
 
   useEffect(() => {
     // Skip any API calls if user is not properly loaded with an ID
@@ -716,16 +758,8 @@ const TicketList = () => {
                          (ticket.subject && ticket.subject.toLowerCase().includes(searchTerm.toLowerCase())) ||
                          (ticket.user?.name && ticket.user.name.toLowerCase().includes(searchTerm.toLowerCase()));
     
-    // Map display status names to actual status values
-    let statusValue = statusFilter;
-    if (statusFilter === 'Reply to Customer') {
-      statusValue = 'waiting-for-customer';
-    } else if (statusFilter === 'Customer Replied') {
-      statusValue = 'waiting-for-agent';
-    }
-    
-    const matchesStatus = statusFilter === 'All Status' || ticket.status === statusValue;
-    const matchesPriority = priorityFilter === 'All Priority' || ticket.priority === priorityFilter;
+    const matchesStatus = statusFilter === 'All Status' || ticket.status === statusFilter.toLowerCase();
+    const matchesPriority = priorityFilter === 'All Priority' || ticket.priority === priorityFilter.toLowerCase();
     const matchesCategory = categoryFilter === 'All Categories' || ticket.category === categoryFilter;
     
     return matchesSearch && matchesStatus && matchesPriority && matchesCategory;
@@ -1277,11 +1311,12 @@ const TicketList = () => {
               onChange={(e) => setStatusFilter(e.target.value)}
             >
               <option>All Status</option>
-              <option>Open</option>
-              <option>In Progress</option>
-              <option>Reply to Customer</option>
-              <option>Customer Replied</option>
-              <option>Closed</option>
+              <option value="open">Open</option>
+              <option value="in-progress">In Progress</option>
+              <option value="waiting-for-customer">Reply to Customer</option>
+              <option value="waiting-for-agent">Customer Replied</option>
+              <option value="resolved">Resolved</option>
+              <option value="closed">Closed</option>
             </select>
 
             <select
@@ -1290,9 +1325,9 @@ const TicketList = () => {
               onChange={(e) => setPriorityFilter(e.target.value)}
             >
               <option>All Priority</option>
-              <option>High</option>
-              <option>Normal</option>
-              <option>Low</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
             </select>
 
             <select
@@ -1301,10 +1336,11 @@ const TicketList = () => {
               onChange={(e) => setCategoryFilter(e.target.value)}
             >
               <option>All Categories</option>
-              <option>Orders & Shipping</option>
-              <option>Billing</option>
-              <option>Product Issues</option>
-              <option>General Inquiry</option>
+              <option value="Product Issues">Product Issues</option>
+              <option value="Orders & Shipping">Orders & Shipping</option>
+              <option value="Billing & Payments">Billing & Payments</option>
+              <option value="Account Management">Account Management</option>
+              <option value="General Inquiries">General Inquiries</option>
             </select>
           </div>
         </div>

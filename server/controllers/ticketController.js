@@ -4,7 +4,7 @@ import User from '../models/User.js';
 import mongoose from 'mongoose';
 import Rating from '../models/Rating.js';
 import Notification from '../models/Notification.js';
-import { emitToUser, emitToRole } from '../index.js';
+import { emitToUser, emitToRole, emitToAgentType } from '../index.js';
 
 /**
  * Get all tickets (with filtering options)
@@ -221,10 +221,26 @@ export const createTicket = async (req, res) => {
     // Emit socket events
     const io = req.app.get('io');
     if (io) {
+      console.log(`[TicketController] Emitting new ticket events for ticket ${ticket._id}:`, {
+        priority: ticket.priority,
+        subject: ticket.subject
+      });
+      
       // Notify the customer
       emitToUser(ticket.user._id, 'new_ticket', ticket);
+      
       // Notify admins
       emitToRole('admin', 'new_ticket', ticket);
+      
+      // Notify appropriate agents based on ticket priority
+      if (ticket.priority === 'high') {
+        emitToAgentType('Senior', 'new_ticket', ticket);
+      } else {
+        emitToAgentType('Junior', 'new_ticket', ticket);
+      }
+      
+      // Also emit to all agents for dashboard updates
+      emitToRole('agent', 'new_ticket', ticket);
     }
 
     res.status(201).json({
@@ -384,12 +400,12 @@ export const updateTicket = async (req, res) => {
         }
       });
 
-      // Notify the assigned agent with the full ticket data - multiple events for reliability
+      // Notify the assigned agent with the full ticket data
       emitToUser(assignedTo, 'ticket_assigned', fullyPopulatedTicket);
       emitToUser(assignedTo, 'ticket_updated', fullyPopulatedTicket);
       emitToUser(assignedTo, 'new_notification', notification);
 
-      // Also notify the customer about the assignment (only if customer is not the assigned agent)
+      // Also notify the customer about the assignment
       if (ticket.user._id.toString() !== assignedTo) {
         const customerNotification = await Notification.create({
           recipient: ticket.user._id,
@@ -407,8 +423,16 @@ export const updateTicket = async (req, res) => {
       emitToRole('admin', 'ticket_assigned', fullyPopulatedTicket);
       emitToRole('admin', 'ticket_updated', fullyPopulatedTicket);
       
-      // Notify all agents about the assignment for dashboard updates
-      // Use multiple events to ensure all components get updated
+      // Notify agents based on ticket priority
+      if (fullyPopulatedTicket.priority === 'high') {
+        emitToAgentType('Senior', 'ticket_assigned', fullyPopulatedTicket);
+        emitToAgentType('Senior', 'ticket_updated', fullyPopulatedTicket);
+      } else {
+        emitToAgentType('Junior', 'ticket_assigned', fullyPopulatedTicket);
+        emitToAgentType('Junior', 'ticket_updated', fullyPopulatedTicket);
+      }
+      
+      // Also notify all agents for dashboard updates
       emitToRole('agent', 'ticket_assigned', fullyPopulatedTicket);
       emitToRole('agent', 'ticket_updated', fullyPopulatedTicket);
       

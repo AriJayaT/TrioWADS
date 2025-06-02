@@ -314,7 +314,7 @@ const CustomerDashboard = () => {
           </div>
           <div>
             <select
-              className="block w-full pl-3 pr-10 py-3 text-base border-gray-300 focus:outline-none focus:ring-pink-500 focus:border-pink-500 sm:text-sm rounded-lg"
+              className="block w-full pl-3 pr-10 py-3 text-base border border-gray-300 focus:outline-none sm:text-sm rounded-lg"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
             >
