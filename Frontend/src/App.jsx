@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import LoginPage from "./components/pages/login&signup/LoginPage";
 import Signup from "./components/pages/login&signup/Signup";
-import AdminDashboard from "./components/pages/admin/adminDashboard";
+import AdminDashboard from "./components/pages/admin/AdminDashboard";
 import AgentManagement from './components/pages/admin/AgentManagement';
 import AdminAnalytic from './components/pages/admin/AdminAnalytic';
 import VersionSelectPage from "./components/pages/VersionSelect/VersionSelectPage";
