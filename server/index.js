@@ -119,6 +119,11 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', message: 'Server is running' });
 });
 
+// Root route - Add this line right after the health check route
+app.get('/', (req, res) => {
+  res.json({ message: 'Backend is running!' });
+});
+
 // Use route files
 app.use('/api/auth', authRoutes);
 app.use('/api/tickets', ticketRoutes);
