@@ -80,6 +80,28 @@ const TicketDetails = () => {
     }
   }, [ticketId]);
 
+  const handleTicketAssigned = useCallback((data) => {
+    console.log('[TicketDetails] Handling ticket assigned:', data);
+    if (!isMountedRef.current) return;
+    
+    if (data._id === ticketId || data.ticket?._id === ticketId) {
+      setTicket(prevTicket => {
+        if (!prevTicket) return null;
+        
+        const updatedTicket = {
+          ...prevTicket,
+          ...(data.ticket || data),
+          status: 'in-progress', // Force status to in-progress when assigned
+          // Preserve existing messages when updating ticket
+          messages: prevTicket.messages || [],
+          lastUpdated: new Date().toISOString()
+        };
+        console.log('[TicketDetails] Updated ticket after assignment:', updatedTicket);
+        return updatedTicket;
+      });
+    }
+  }, [ticketId]);
+
   // Main data fetching effect
   useEffect(() => {
     const fetchTicketDetails = async () => {
@@ -177,38 +199,42 @@ const TicketDetails = () => {
   }, [ticketId, refreshCounter]);
 
   // Socket event subscription effect
-    useEffect(() => {
-      if (!socket || !isConnected) {
-        console.log('[TicketDetails] Socket not connected, skipping event handlers');
-        return;
-      }
+  useEffect(() => {
+    if (!socket || !isConnected) {
+      console.log('[TicketDetails] Socket not connected, skipping event handlers');
+      return;
+    }
 
-      console.log('[TicketDetails] Setting up socket event handlers for ticket:', ticketId);
+    console.log('[TicketDetails] Setting up socket event handlers for ticket:', ticketId);
 
-      // Subscribe to events
-      socket.on('new_reply', handleNewReply);
-      socket.on('ticket_updated', handleTicketUpdate);
+    // Subscribe to events
+    socket.on('new_reply', handleNewReply);
+    socket.on('ticket_updated', handleTicketUpdate);
+    socket.on('ticket_assigned', handleTicketAssigned);
+    socket.on('ticket_status_changed', handleTicketUpdate);
 
-      // Cleanup subscriptions
-      return () => {
-        console.log('[TicketDetails] Cleaning up socket event subscriptions for ticket:', ticketId);
-        try {
-          if (socket) {
-            socket.off('new_reply', handleNewReply);
-            socket.off('ticket_updated', handleTicketUpdate);
-          }
-        } catch (error) {
-          console.error('[TicketDetails] Error cleaning up socket events:', error);
+    // Cleanup subscriptions
+    return () => {
+      console.log('[TicketDetails] Cleaning up socket event subscriptions for ticket:', ticketId);
+      try {
+        if (socket) {
+          socket.off('new_reply', handleNewReply);
+          socket.off('ticket_updated', handleTicketUpdate);
+          socket.off('ticket_assigned', handleTicketAssigned);
+          socket.off('ticket_status_changed', handleTicketUpdate);
         }
-      };
-    }, [socket, isConnected, ticketId, handleNewReply, handleTicketUpdate]);
+      } catch (error) {
+        console.error('[TicketDetails] Error cleaning up socket events:', error);
+      }
+    };
+  }, [socket, isConnected, ticketId, handleNewReply, handleTicketUpdate, handleTicketAssigned]);
 
-    // Cleanup on unmount
-    useEffect(() => {
-      return () => {
-        isMountedRef.current = false;
-      };
-    }, []);
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const handleReply = async (e) => {
     e.preventDefault();

@@ -5,8 +5,6 @@ import {
   createArticle,
   updateArticle,
   deleteArticle,
-  rateArticle,
-  getUserArticleRating,
   getRelatedArticles
 } from '../controllers/articleController.js';
 import { protect, authorize } from '../middleware/auth.js';
@@ -98,7 +96,7 @@ router.get('/related', getRelatedArticles);
  *         description: Article ID
  *     responses:
  *       200:
- *         description: Article details with related articles
+ *         description: Article found
  *       404:
  *         description: Article not found
  */
@@ -225,73 +223,5 @@ router.put('/:id', protect, updateArticle);
  *         description: Article not found
  */
 router.delete('/:id', protect, deleteArticle);
-
-/**
- * @swagger
- * /api/articles/{id}/rate:
- *   post:
- *     summary: Rate an article (helpful/unhelpful)
- *     tags: [Articles]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         description: Article ID
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - isHelpful
- *             properties:
- *               isHelpful:
- *                 type: boolean
- *     responses:
- *       200:
- *         description: Rating submitted successfully
- *       404:
- *         description: Article not found
- */
-router.post('/:id/rate', rateArticle);
-
-/**
- * @swagger
- * /api/articles/{id}/rating:
- *   get:
- *     summary: Check if user has already rated an article
- *     tags: [Articles]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         description: Article ID
- *     responses:
- *       200:
- *         description: User rating status
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 hasRated:
- *                   type: boolean
- *                 rating:
- *                   type: object
- *                   properties:
- *                     isHelpful:
- *                       type: boolean
- *                     createdAt:
- *                       type: string
- *                       format: date-time
- */
-router.get('/:id/rating', getUserArticleRating);
 
 export default router; 

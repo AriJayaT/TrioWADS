@@ -94,43 +94,6 @@ const articleService = {
   },
   
   /**
-   * Rate an article (helpful/unhelpful)
-   * @param {string} articleId - The article ID
-   * @param {Object} ratingData - Rating data
-   * @param {boolean} ratingData.isHelpful - Whether the article was helpful
-   * @returns {Promise<Object>} - Updated helpful/unhelpful counts and user rating info
-   */
-  rateArticle: async (articleId, ratingData) => {
-    try {
-      const response = await apiClient.post(`/articles/${articleId}/rate`, ratingData);
-      return response.data;
-    } catch (error) {
-      // Handle specific error for rating conflicts (race conditions)
-      if (error.response?.data?.conflictError) {
-        throw {
-          ...error.response.data,
-          isConflictError: true
-        };
-      }
-      throw error.response?.data?.error || 'Failed to submit rating';
-    }
-  },
-  
-  /**
-   * Check if user has already rated an article
-   * @param {string} articleId - The article ID
-   * @returns {Promise<Object>} - User rating status and details
-   */
-  getUserArticleRating: async (articleId) => {
-    try {
-      const response = await apiClient.get(`/articles/${articleId}/rating`);
-      return response.data;
-    } catch (error) {
-      throw error.response?.data?.error || 'Failed to get rating status';
-    }
-  },
-  
-  /**
    * Search articles
    * @param {string} searchTerm - Term to search for
    * @returns {Promise<Object>} - Search results

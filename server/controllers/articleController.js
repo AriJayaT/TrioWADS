@@ -1,5 +1,4 @@
 import Article from '../models/Article.js';
-import ArticleRating from '../models/ArticleRating.js';
 import User from '../models/User.js';
 
 /**
@@ -183,206 +182,20 @@ export const updateArticle = async (req, res) => {
 /**
  * Delete article
  * @route DELETE /api/articles/:id
- * @access Private (Admin/Agent)
+ * @access Private/Admin
  */
 export const deleteArticle = async (req, res) => {
   try {
-    // Only admins and agents can delete articles
-    if (!req.user || !['admin', 'agent'].includes(req.user.role)) {
-      return res.status(403).json({ error: 'Not authorized to delete articles' });
-    }
-
     const article = await Article.findById(req.params.id);
-
+    
     if (!article) {
       return res.status(404).json({ error: 'Article not found' });
     }
 
-    await article.deleteOne();
-
-    res.status(200).json({
-      success: true,
-      message: 'Article deleted successfully'
-    });
+    await article.remove();
+    res.json({ message: 'Article deleted' });
   } catch (error) {
     console.error('Delete article error:', error);
-    res.status(500).json({ error: 'Server error' });
-  }
-};
-
-/**
- * Rate article (helpful/unhelpful)
- * @route POST /api/articles/:id/rate
- * @access Public
- */
-export const rateArticle = async (req, res) => {
-  try {
-    const { isHelpful } = req.body;
-    const articleId = req.params.id;
-    
-    if (isHelpful === undefined) {
-      return res.status(400).json({ error: 'Rating value is required' });
-    }
-
-    const article = await Article.findById(articleId);
-
-    if (!article) {
-      return res.status(404).json({ error: 'Article not found' });
-    }
-
-    // Check if user is authenticated
-    const userId = req.user?.id;
-    const ipAddress = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'];
-    const userAgent = req.headers['user-agent'];
-
-    let existingRating = null;
-
-    if (userId) {
-      // For authenticated users, check by user ID
-      existingRating = await ArticleRating.findOne({ 
-        article: articleId, 
-        user: userId 
-      });
-    } else {
-      // For non-authenticated users, check by IP and user agent
-      existingRating = await ArticleRating.findOne({ 
-        article: articleId, 
-        ipAddress, 
-        userAgent 
-      });
-    }
-
-    let wasUpdated = false;
-    let newRating = null;
-
-    if (existingRating) {
-      // User has already rated - update the existing rating
-      const oldRating = existingRating.isHelpful;
-      const newRatingValue = Boolean(isHelpful);
-      
-      // Only update if the rating actually changed
-      if (oldRating !== newRatingValue) {
-        // Update the rating record
-        existingRating.isHelpful = newRatingValue;
-        existingRating.createdAt = new Date(); // Update timestamp to show when it was changed
-        await existingRating.save();
-        
-        // Update article counters
-        if (oldRating) {
-          // Was helpful, now not helpful
-          article.helpfulCount = Math.max(0, article.helpfulCount - 1);
-          article.unhelpfulCount += 1;
-        } else {
-          // Was not helpful, now helpful
-          article.unhelpfulCount = Math.max(0, article.unhelpfulCount - 1);
-          article.helpfulCount += 1;
-        }
-        
-        await article.save();
-        wasUpdated = true;
-        newRating = existingRating;
-      } else {
-        // Same rating - no change needed
-        newRating = existingRating;
-      }
-    } else {
-      // Create new rating record
-      const ratingData = {
-        article: articleId,
-        isHelpful: Boolean(isHelpful)
-      };
-
-      if (userId) {
-        ratingData.user = userId;
-      } else {
-        ratingData.ipAddress = ipAddress;
-        ratingData.userAgent = userAgent;
-      }
-
-      newRating = await ArticleRating.create(ratingData);
-
-      // Update article counters for new rating
-      if (isHelpful) {
-        article.helpfulCount += 1;
-      } else {
-        article.unhelpfulCount += 1;
-      }
-
-      await article.save();
-    }
-
-    res.status(200).json({
-      success: true,
-      helpfulCount: article.helpfulCount,
-      unhelpfulCount: article.unhelpfulCount,
-      userRating: {
-        isHelpful: newRating.isHelpful,
-        createdAt: newRating.createdAt
-      },
-      wasUpdated: wasUpdated // Indicate if this was an update vs new rating
-    });
-  } catch (error) {
-    console.error('Rate article error:', error);
-    
-    // Handle duplicate key error (in case of race conditions)
-    if (error.code === 11000) {
-      return res.status(400).json({ 
-        error: 'Rating conflict occurred. Please try again.',
-        conflictError: true
-      });
-    }
-    
-    res.status(500).json({ error: 'Server error' });
-  }
-};
-
-/**
- * Check if user has already rated an article
- * @route GET /api/articles/:id/rating
- * @access Public
- */
-export const getUserArticleRating = async (req, res) => {
-  try {
-    const articleId = req.params.id;
-    const userId = req.user?.id;
-    const ipAddress = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'];
-    const userAgent = req.headers['user-agent'];
-
-    let existingRating = null;
-
-    if (userId) {
-      // For authenticated users, check by user ID
-      existingRating = await ArticleRating.findOne({ 
-        article: articleId, 
-        user: userId 
-      });
-    } else {
-      // For non-authenticated users, check by IP and user agent
-      existingRating = await ArticleRating.findOne({ 
-        article: articleId, 
-        ipAddress, 
-        userAgent 
-      });
-    }
-
-    if (existingRating) {
-      return res.status(200).json({
-        success: true,
-        hasRated: true,
-        rating: {
-          isHelpful: existingRating.isHelpful,
-          createdAt: existingRating.createdAt
-        }
-      });
-    } else {
-      return res.status(200).json({
-        success: true,
-        hasRated: false,
-        rating: null
-      });
-    }
-  } catch (error) {
-    console.error('Get user article rating error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 };

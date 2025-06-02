@@ -28,12 +28,31 @@ const CustomerDashboard = () => {
 
   // Socket event handlers with useCallback
   const handleTicketUpdate = useCallback((data) => {
-    console.log(`[${COMPONENT_NAME}] Handling ticket update:`, data);
-    if (!isMountedRef.current) return;
+    console.log(`[${COMPONENT_NAME}] Handling ticket update:`, {
+      eventData: data,
+      ticketId: data._id || data.ticket?._id,
+      newStatus: data.status || data.ticket?.status,
+      fullData: data
+    });
+    
+    if (!isMountedRef.current) {
+      console.log(`[${COMPONENT_NAME}] Component not mounted, skipping update`);
+      return;
+    }
+    
     setTickets(prevTickets => {
+      console.log(`[${COMPONENT_NAME}] Current tickets before update:`, 
+        prevTickets.map(t => ({ id: t._id, status: t.status }))
+      );
+      
       const updatedTickets = prevTickets.map(ticket => {
         const match = ticket._id === data._id || ticket._id === data.ticket?._id;
         if (match) {
+          console.log(`[${COMPONENT_NAME}] Found matching ticket:`, {
+            ticketId: ticket._id,
+            currentStatus: ticket.status
+          });
+          
           const newStatus = data.status || data.ticket?.status || ticket.status;
           const updatedTicket = {
             ...ticket,
@@ -41,11 +60,23 @@ const CustomerDashboard = () => {
             status: newStatus,
             lastUpdated: new Date().toISOString()
           };
-          console.log(`[${COMPONENT_NAME}] Updated ticket (ticket_updated):`, updatedTicket);
+          
+          console.log(`[${COMPONENT_NAME}] Updated ticket:`, {
+            ticketId: updatedTicket._id,
+            oldStatus: ticket.status,
+            newStatus: updatedTicket.status,
+            fullTicket: updatedTicket
+          });
+          
           return updatedTicket;
         }
         return ticket;
       });
+      
+      console.log(`[${COMPONENT_NAME}] Tickets after update:`, 
+        updatedTickets.map(t => ({ id: t._id, status: t.status }))
+      );
+      
       return updatedTickets;
     });
   }, []);
@@ -72,34 +103,71 @@ const CustomerDashboard = () => {
   }, []);
 
   const handleTicketAssigned = useCallback((data) => {
-    console.log(`[${COMPONENT_NAME}] Handling ticket assigned:`, data);
-    if (!isMountedRef.current) return;
+    console.log(`[${COMPONENT_NAME}] Handling ticket assigned:`, {
+      eventData: data,
+      ticketId: data._id || data.ticket?._id,
+      fullData: data
+    });
+    
+    if (!isMountedRef.current) {
+      console.log(`[${COMPONENT_NAME}] Component not mounted, skipping assignment`);
+      return;
+    }
     
     setTickets(prevTickets => {
+      console.log(`[${COMPONENT_NAME}] Current tickets before assignment:`, 
+        prevTickets.map(t => ({ id: t._id, status: t.status }))
+      );
+      
       const ticketId = data._id || data.ticket?._id;
       const exists = prevTickets.some(ticket => ticket._id === ticketId);
       
       if (exists) {
         const updatedTickets = prevTickets.map(ticket => {
           if (ticket._id === ticketId) {
+            console.log(`[${COMPONENT_NAME}] Found ticket to assign:`, {
+              ticketId: ticket._id,
+              currentStatus: ticket.status
+            });
+            
             const updatedTicket = {
               ...ticket,
               ...(data.ticket || data),
+              status: 'in-progress', // Force status to in-progress when assigned
               lastUpdated: new Date().toISOString()
             };
-            console.log(`[${COMPONENT_NAME}] Updated assigned ticket:`, updatedTicket);
+            
+            console.log(`[${COMPONENT_NAME}] Updated assigned ticket:`, {
+              ticketId: updatedTicket._id,
+              oldStatus: ticket.status,
+              newStatus: updatedTicket.status,
+              fullTicket: updatedTicket
+            });
+            
             return updatedTicket;
           }
           return ticket;
         });
+        
+        console.log(`[${COMPONENT_NAME}] Tickets after assignment:`, 
+          updatedTickets.map(t => ({ id: t._id, status: t.status }))
+        );
+        
         return updatedTickets;
       }
       
       const newTicket = {
         ...(data.ticket || data),
+        status: 'in-progress', // Force status to in-progress for new tickets
         lastUpdated: new Date().toISOString()
       };
-      console.log(`[${COMPONENT_NAME}] Added new assigned ticket:`, newTicket);
+      
+      console.log(`[${COMPONENT_NAME}] Adding new assigned ticket:`, {
+        ticketId: newTicket._id,
+        status: newTicket.status,
+        fullTicket: newTicket
+      });
+      
       return [newTicket, ...prevTickets];
     });
   }, []);
@@ -138,21 +206,34 @@ const CustomerDashboard = () => {
     setTickets(prevTickets => [newTicket, ...prevTickets]);
   }, []);
 
-  // Set up socket subscriptions
+  // Set up socket subscriptions with debug logging
   useEffect(() => {
     if (!socket || !isConnected) {
       console.log(`[${COMPONENT_NAME}] Socket not connected, skipping event handlers`);
       return;
     }
 
-    console.log(`[${COMPONENT_NAME}] Setting up socket event handlers`);
+    console.log(`[${COMPONENT_NAME}] Setting up socket event handlers. Socket status:`, {
+      connected: isConnected,
+      socketId: socket?.id
+    });
 
     // Subscribe to events with component identifier
     socket.on('new_notification', handleNewNotification);
-    socket.on('ticket_updated', handleTicketUpdate);
+    socket.on('ticket_updated', (data) => {
+      console.log(`[${COMPONENT_NAME}] Received ticket_updated event:`, data);
+      handleTicketUpdate(data);
+    });
     socket.on('new_reply', handleNewReply);
-    socket.on('ticket_assigned', handleTicketAssigned);
+    socket.on('ticket_assigned', (data) => {
+      console.log(`[${COMPONENT_NAME}] Received ticket_assigned event:`, data);
+      handleTicketAssigned(data);
+    });
     socket.on('new_ticket', handleNewTicket);
+    socket.on('ticket_status_changed', (data) => {
+      console.log(`[${COMPONENT_NAME}] Received ticket_status_changed event:`, data);
+      handleTicketUpdate(data);
+    });
 
     return () => {
       console.log(`[${COMPONENT_NAME}] Cleaning up socket event subscriptions`);
@@ -163,6 +244,7 @@ const CustomerDashboard = () => {
           socket.off('new_reply');
           socket.off('ticket_assigned');
           socket.off('new_ticket');
+          socket.off('ticket_status_changed');
         }
       } catch (error) {
         console.error(`[${COMPONENT_NAME}] Error cleaning up socket events:`, error);
@@ -182,6 +264,7 @@ const CustomerDashboard = () => {
           socket.off('new_reply');
           socket.off('ticket_assigned');
           socket.off('new_ticket');
+          socket.off('ticket_status_changed');
         }
       } catch (error) {
         console.error(`[${COMPONENT_NAME}] Error cleaning up socket events on unmount:`, error);
@@ -189,14 +272,19 @@ const CustomerDashboard = () => {
     };
   }, [socket]);
 
+  // Add debug logging to initial ticket fetch
   useEffect(() => {
     const fetchTickets = async () => {
       try {
+        console.log(`[${COMPONENT_NAME}] Fetching initial tickets`);
         setLoading(true);
         const response = await ticketService.getTickets();
+        console.log(`[${COMPONENT_NAME}] Initial tickets fetched:`, 
+          response.tickets?.map(t => ({ id: t._id, status: t.status }))
+        );
         setTickets(response.tickets || []);
       } catch (err) {
-        console.error('Error fetching tickets:', err);
+        console.error(`[${COMPONENT_NAME}] Error fetching tickets:`, err);
         setError('Failed to load tickets. Please try again later.');
       } finally {
         setLoading(false);
@@ -207,16 +295,21 @@ const CustomerDashboard = () => {
   }, []);
 
   const getStatusColor = (status) => {
-    switch (status) {
+    const normalizedStatus = status?.toLowerCase?.() || '';
+    
+    switch (normalizedStatus) {
       case 'open':
         return 'bg-green-100 text-green-800';
       case 'closed':
         return 'bg-gray-100 text-gray-800';
       case 'in-progress':
+      case 'in progress':
         return 'bg-yellow-100 text-yellow-800';
       case 'waiting-for-customer':
+      case 'waiting for customer':
         return 'bg-blue-100 text-blue-800';
       case 'waiting-for-agent':
+      case 'waiting for agent':
         return 'bg-purple-100 text-purple-800';
       case 'resolved':
         return 'bg-green-100 text-green-800';
@@ -391,6 +484,7 @@ const CustomerDashboard = () => {
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(ticket.status)}`}>
                         {ticket.status === 'waiting-for-customer' ? 'Reply Requested' : 
                          ticket.status === 'waiting-for-agent' ? 'Waiting for Agent' :
+                         ticket.status === 'in-progress' ? 'In Progress' :
                          ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1).replace(/-/g, ' ')}
                       </span>
                     </td>

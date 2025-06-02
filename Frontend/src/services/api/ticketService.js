@@ -18,6 +18,8 @@ const ticketService = {
    */
   getTickets: async (params = {}) => {
     try {
+      console.log('[TicketService] getTickets called with params:', params);
+      
       const requestParams = { ...params };
       
       // If unassigned is true, make sure it's properly formatted for the API
@@ -25,7 +27,25 @@ const ticketService = {
         requestParams.unassigned = 'true';
       }
       
+      // Handle status array if provided
+      if (requestParams.status && typeof requestParams.status === 'string') {
+        // Split by comma and clean up any whitespace
+        requestParams.status = requestParams.status.split(',').map(s => s.trim()).join(',');
+      }
+      
+      console.log('[TicketService] Making API request with params:', requestParams);
+      
       const response = await apiClient.get('/tickets', { params: requestParams });
+      
+      console.log('[TicketService] API response:', {
+        success: !!response.data,
+        ticketCount: response.data?.tickets?.length,
+        firstTicket: response.data?.tickets?.[0] ? {
+          id: response.data.tickets[0]._id,
+          assignedTo: response.data.tickets[0].assignedTo,
+          status: response.data.tickets[0].status
+        } : null
+      });
       
       // Ensure all tickets have consistent ID fields (both id and _id)
       if (response.data.tickets && Array.isArray(response.data.tickets)) {
@@ -42,6 +62,13 @@ const ticketService = {
       
       return response.data;
     } catch (error) {
+      console.error('[TicketService] Error in getTickets:', error);
+      console.error('[TicketService] Error details:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        message: error.message
+      });
       throw error.response?.data?.error || 'Failed to fetch tickets';
     }
   },

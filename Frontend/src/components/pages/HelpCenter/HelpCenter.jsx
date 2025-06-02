@@ -13,7 +13,6 @@ const HelpCenter = ({ layout = "default" }) => {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [userRating, setUserRating] = useState(null); // Track user's rating for current article
   const location = useLocation();
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
@@ -152,19 +151,6 @@ const HelpCenter = ({ layout = "default" }) => {
       const response = await articleService.getArticle(articleId);
       if (response.success) {
         setSelectedArticle(response.article);
-        
-        // Check if user has already rated this article
-        try {
-          const ratingResponse = await articleService.getUserArticleRating(articleId);
-          if (ratingResponse.success && ratingResponse.hasRated) {
-            setUserRating(ratingResponse.rating);
-          } else {
-            setUserRating(null);
-          }
-        } catch (ratingError) {
-          console.error('Error checking user rating:', ratingError);
-          setUserRating(null); // Default to no rating on error
-        }
       }
     } catch (error) {
       console.error('Error loading article:', error);
@@ -175,49 +161,8 @@ const HelpCenter = ({ layout = "default" }) => {
   // Go back to article list
   const handleBackToList = () => {
     setSelectedArticle(null);
-    setUserRating(null); // Clear user rating when going back to list
   };
-  
-  // Rate article
-  const handleRateArticle = async (articleId, isHelpful) => {
-    try {
-      const response = await articleService.rateArticle(articleId, { isHelpful });
-      
-      // Update the article with new counts
-      setSelectedArticle(prev => ({
-        ...prev,
-        helpfulCount: response.helpfulCount,
-        unhelpfulCount: response.unhelpfulCount
-      }));
-      
-      // Set user rating (whether new or updated)
-      setUserRating({
-        isHelpful: response.userRating.isHelpful,
-        createdAt: response.userRating.createdAt
-      });
-      
-      // Show feedback message
-      if (response.wasUpdated) {
-        // User changed their rating
-        alert(`Rating updated! You now find this article ${isHelpful ? 'helpful' : 'not helpful'}.`);
-      } else {
-        // New rating submitted
-        alert(`Thank you for your feedback! You rated this article as ${isHelpful ? 'helpful' : 'not helpful'}.`);
-      }
-      
-    } catch (error) {
-      console.error('Error rating article:', error);
-      
-      if (error.isConflictError) {
-        // Rating conflict (race condition)
-        alert('There was a conflict with your rating. Please try again.');
-      } else {
-        // Other errors
-        alert('Failed to submit rating. Please try again.');
-      }
-    }
-  };
-  
+
   return (
     <div className="max-w-5xl mx-auto py-8">
       <h1 className="text-3xl font-bold text-gray-800 mb-2">Help Center</h1>
@@ -319,78 +264,11 @@ const HelpCenter = ({ layout = "default" }) => {
                 )}
               </div>
 
-              {/* Article Rating */}
+              {/* View count */}
               <div className="border-t pt-4">
-                <p className="text-gray-600 mb-3">Was this article helpful?</p>
-                
-                {userRating ? (
-                  // Show current rating with option to change
-                  <div className="space-y-3">
-                    <div className="flex items-center space-x-2">
-                      <span className="text-sm text-gray-600">Your current rating:</span>
-                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        userRating.isHelpful 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {userRating.isHelpful ? '👍 Helpful' : '👎 Not helpful'}
-                      </span>
-                      <span className="text-xs text-gray-500">
-                        on {new Date(userRating.createdAt).toLocaleDateString()}
-                      </span>
-                    </div>
-                    
-                    {/* Allow changing rating */}
-                    <div className="flex items-center space-x-4">
-                      <span className="text-sm text-gray-600">Change your rating:</span>
-                      <button
-                        onClick={() => handleRateArticle(selectedArticle._id, true)}
-                        className={`flex items-center px-4 py-2 rounded-lg transition-colors ${
-                          userRating.isHelpful 
-                            ? 'bg-green-100 text-green-800 border-2 border-green-300' 
-                            : 'bg-green-50 text-green-700 hover:bg-green-100 border border-green-200'
-                        }`}
-                        disabled={userRating.isHelpful}
-                      >
-                        👍 Yes ({selectedArticle.helpfulCount || 0})
-                      </button>
-                      <button
-                        onClick={() => handleRateArticle(selectedArticle._id, false)}
-                        className={`flex items-center px-4 py-2 rounded-lg transition-colors ${
-                          !userRating.isHelpful 
-                            ? 'bg-red-100 text-red-800 border-2 border-red-300' 
-                            : 'bg-red-50 text-red-700 hover:bg-red-100 border border-red-200'
-                        }`}
-                        disabled={!userRating.isHelpful}
-                      >
-                        👎 No ({selectedArticle.unhelpfulCount || 0})
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  // Show rating buttons if not rated yet
-                  <div className="flex items-center space-x-4">
-                    <button
-                      onClick={() => handleRateArticle(selectedArticle._id, true)}
-                      className="flex items-center px-4 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors"
-                    >
-                      👍 Yes ({selectedArticle.helpfulCount || 0})
-                    </button>
-                    <button
-                      onClick={() => handleRateArticle(selectedArticle._id, false)}
-                      className="flex items-center px-4 py-2 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors"
-                    >
-                      👎 No ({selectedArticle.unhelpfulCount || 0})
-                    </button>
-                  </div>
-                )}
-                
                 <div className="flex items-center justify-between mt-3">
                   <span className="text-sm text-gray-500">
                     {selectedArticle.viewCount || 0} views
-                  </span>
-                  <span className="text-sm text-gray-500">
-                    {((selectedArticle.helpfulCount || 0) + (selectedArticle.unhelpfulCount || 0)) || 0} ratings
                   </span>
                 </div>
               </div>

@@ -17,11 +17,15 @@ const CustomerHome = () => {
   useEffect(() => {
     const fetchTickets = async () => {
       try {
+        console.log('[CustomerHome] Fetching initial tickets');
         setLoading(true);
         const response = await ticketService.getTickets();
+        console.log('[CustomerHome] Initial tickets fetched:', 
+          response.tickets?.map(t => ({ id: t._id, status: t.status }))
+        );
         setTickets(response.tickets || []);
       } catch (err) {
-        console.error('Error fetching tickets:', err);
+        console.error('[CustomerHome] Error fetching tickets:', err);
         setError('Failed to load tickets. Please try again later.');
       } finally {
         setLoading(false);
@@ -33,22 +37,52 @@ const CustomerHome = () => {
 
   // Socket event handlers with useCallback
   const handleTicketUpdate = useCallback((data) => {
-    console.log('[CustomerHome] Handling ticket update:', data);
-    if (!isMountedRef.current) return;
+    console.log('[CustomerHome] Handling ticket update:', {
+      eventData: data,
+      ticketId: data._id || data.ticket?._id,
+      newStatus: data.status || data.ticket?.status,
+      fullData: data
+    });
+    
+    if (!isMountedRef.current) {
+      console.log('[CustomerHome] Component not mounted, skipping update');
+      return;
+    }
     
     setTickets(prevTickets => {
+      console.log('[CustomerHome] Current tickets before update:', 
+        prevTickets.map(t => ({ id: t._id, status: t.status }))
+      );
+      
       const updatedTickets = prevTickets.map(ticket => {
         if (ticket._id === data._id || ticket._id === data.ticket?._id) {
+          console.log('[CustomerHome] Found matching ticket:', {
+            ticketId: ticket._id,
+            currentStatus: ticket.status
+          });
+          
           const updatedTicket = {
             ...ticket,
             ...(data.ticket || data),
             lastUpdated: new Date().toISOString()
           };
-          console.log('[CustomerHome] Updated ticket:', updatedTicket);
+          
+          console.log('[CustomerHome] Updated ticket:', {
+            ticketId: updatedTicket._id,
+            oldStatus: ticket.status,
+            newStatus: updatedTicket.status,
+            fullTicket: updatedTicket
+          });
+          
           return updatedTicket;
         }
         return ticket;
       });
+      
+      console.log('[CustomerHome] Tickets after update:', 
+        updatedTickets.map(t => ({ id: t._id, status: t.status }))
+      );
+      
       return updatedTickets;
     });
   }, []);
@@ -74,18 +108,83 @@ const CustomerHome = () => {
     });
   }, []);
 
-  // Set up socket subscriptions
+  const handleTicketAssigned = useCallback((data) => {
+    console.log('[CustomerHome] Handling ticket assigned:', {
+      eventData: data,
+      ticketId: data._id || data.ticket?._id,
+      fullData: data
+    });
+    
+    if (!isMountedRef.current) {
+      console.log('[CustomerHome] Component not mounted, skipping assignment');
+      return;
+    }
+    
+    setTickets(prevTickets => {
+      console.log('[CustomerHome] Current tickets before assignment:', 
+        prevTickets.map(t => ({ id: t._id, status: t.status }))
+      );
+      
+      const updatedTickets = prevTickets.map(ticket => {
+        if (ticket._id === data._id || ticket._id === data.ticket?._id) {
+          console.log('[CustomerHome] Found ticket to assign:', {
+            ticketId: ticket._id,
+            currentStatus: ticket.status
+          });
+          
+          const updatedTicket = {
+            ...ticket,
+            ...(data.ticket || data),
+            status: 'in-progress', // Force status to in-progress when assigned
+            lastUpdated: new Date().toISOString()
+          };
+          
+          console.log('[CustomerHome] Updated assigned ticket:', {
+            ticketId: updatedTicket._id,
+            oldStatus: ticket.status,
+            newStatus: updatedTicket.status,
+            fullTicket: updatedTicket
+          });
+          
+          return updatedTicket;
+        }
+        return ticket;
+      });
+      
+      console.log('[CustomerHome] Tickets after assignment:', 
+        updatedTickets.map(t => ({ id: t._id, status: t.status }))
+      );
+      
+      return updatedTickets;
+    });
+  }, []);
+
+  // Set up socket subscriptions with debug logging
   useEffect(() => {
     if (!socket || !isConnected) {
       console.log('[CustomerHome] Socket not connected, skipping event handlers');
       return;
     }
 
-    console.log('[CustomerHome] Setting up socket event handlers');
+    console.log('[CustomerHome] Setting up socket event handlers. Socket status:', {
+      connected: isConnected,
+      socketId: socket?.id
+    });
 
     // Subscribe to events
-    socket.on('ticket_updated', handleTicketUpdate);
+    socket.on('ticket_updated', (data) => {
+      console.log('[CustomerHome] Received ticket_updated event:', data);
+      handleTicketUpdate(data);
+    });
     socket.on('new_reply', handleNewReply);
+    socket.on('ticket_assigned', (data) => {
+      console.log('[CustomerHome] Received ticket_assigned event:', data);
+      handleTicketAssigned(data);
+    });
+    socket.on('ticket_status_changed', (data) => {
+      console.log('[CustomerHome] Received ticket_status_changed event:', data);
+      handleTicketUpdate(data);
+    });
 
     // Cleanup subscriptions
     return () => {
@@ -94,12 +193,14 @@ const CustomerHome = () => {
         if (socket) {
           socket.off('ticket_updated', handleTicketUpdate);
           socket.off('new_reply', handleNewReply);
+          socket.off('ticket_assigned', handleTicketAssigned);
+          socket.off('ticket_status_changed', handleTicketUpdate);
         }
       } catch (error) {
         console.error('[CustomerHome] Error cleaning up socket events:', error);
       }
     };
-  }, [socket, isConnected, handleTicketUpdate, handleNewReply]);
+  }, [socket, isConnected, handleTicketUpdate, handleNewReply, handleTicketAssigned]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -139,16 +240,22 @@ const CustomerHome = () => {
   };
 
   const getStatusColor = (status) => {
-    switch (status) {
+    // Normalize status to lowercase and handle both formats
+    const normalizedStatus = status?.toLowerCase?.() || '';
+    
+    switch (normalizedStatus) {
       case 'open':
         return 'bg-green-100 text-green-800';
       case 'closed':
         return 'bg-gray-100 text-gray-800';
       case 'in-progress':
+      case 'in progress':
         return 'bg-yellow-100 text-yellow-800';
       case 'waiting-for-customer':
+      case 'waiting for customer':
         return 'bg-blue-100 text-blue-800';
       case 'waiting-for-agent':
+      case 'waiting for agent':
         return 'bg-purple-100 text-purple-800';
       case 'resolved':
         return 'bg-green-100 text-green-800';
@@ -328,6 +435,7 @@ const CustomerHome = () => {
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(ticket.status)}`}>
                         {ticket.status === 'waiting-for-customer' ? 'Reply Requested' : 
                          ticket.status === 'waiting-for-agent' ? 'Waiting for Agent' :
+                         ticket.status === 'in-progress' ? 'In Progress' :
                          ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1).replace(/-/g, ' ')}
                       </span>
                     </td>

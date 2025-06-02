@@ -13,15 +13,38 @@ import { emitToUser, emitToRole, emitToAgentType } from '../index.js';
  */
 export const getTickets = async (req, res) => {
   try {
+    console.log('[TicketController] getTickets called with query:', req.query);
+    console.log('[TicketController] User making request:', {
+      id: req.user._id,
+      role: req.user.role,
+      agentType: req.user.agentType
+    });
+    
     const { status, priority, category, assignedTo, unassigned, page = 1, limit = 10 } = req.query;
     const skip = (page - 1) * limit;
     
     // Build filter object
     const filter = {};
-    if (status) filter.status = status;
+    
+    // Handle status filter
+    if (status) {
+      if (status.includes(',')) {
+        filter.status = { $in: status.split(',').map(s => s.trim()) };
+      } else {
+        filter.status = status;
+      }
+    }
+    
     if (priority) filter.priority = priority;
     if (category) filter.category = category;
-    if (assignedTo) filter.assignedTo = assignedTo;
+    
+    // Handle assignedTo filter
+    if (assignedTo) {
+      // Convert string ID to ObjectId if needed
+      filter.assignedTo = mongoose.Types.ObjectId.isValid(assignedTo) 
+        ? new mongoose.Types.ObjectId(assignedTo)
+        : assignedTo;
+    }
     
     // Handle unassigned tickets - filter tickets with no assignedTo or null assignedTo
     if (unassigned === 'true') {
@@ -43,12 +66,21 @@ export const getTickets = async (req, res) => {
       filter.user = req.user.id;
     }
 
+    console.log('[TicketController] Final filter:', filter);
+
     const tickets = await Ticket.find(filter)
       .populate('user', 'name email')
-      .populate('assignedTo', 'name')
+      .populate('assignedTo', 'name email agentType role')
       .sort({ lastUpdated: -1 })
       .skip(skip)
       .limit(parseInt(limit));
+    
+    console.log('[TicketController] Found tickets:', tickets.map(t => ({
+      id: t._id,
+      subject: t.subject,
+      status: t.status,
+      assignedTo: t.assignedTo?._id || t.assignedTo
+    })));
     
     const total = await Ticket.countDocuments(filter);
 
@@ -61,7 +93,7 @@ export const getTickets = async (req, res) => {
       tickets
     });
   } catch (error) {
-    console.error('Get tickets error:', error);
+    console.error('[TicketController] Error in getTickets:', error);
     res.status(500).json({ error: 'Server error' });
   }
 };

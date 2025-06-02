@@ -4,9 +4,11 @@ import MetricCard from '../common/MetricCard';
 import Button from '../common/Button';
 import { useSocket } from '../../context/SocketContext';
 import apiClient from '../../services/api/apiClient';
+import { exportAnalyticsToPDF } from '../../utils/pdfExport';
 
-const SystemOverview = () => {
+const SystemOverview = ({ metrics: dashboardMetrics, loading }) => {
   const { socket, isConnected } = useSocket();
+  const [isExporting, setIsExporting] = useState(false);
   const [metrics, setMetrics] = useState([
     {
       icon: <FaUserTie className="text-lg text-blue-500" />,
@@ -164,12 +166,76 @@ const SystemOverview = () => {
     console.log('[SystemOverview] Metrics updated:', metrics);
   }, [metrics]);
 
+  const handleGenerateReport = async () => {
+    if (loading) {
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const response = await apiClient.get('/tickets/stats', {
+        params: { 
+          timeRange: 'all-time',
+          skipSocket: 'true'  // Prevent socket emissions
+        }
+      });
+
+      if (response.data.success) {
+        await exportAnalyticsToPDF(response.data.stats, 'overview', 'all-time');
+        console.log('[SystemOverview] Report generated successfully');
+      }
+    } catch (error) {
+      console.error('[SystemOverview] Error generating report:', error);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // Update metrics when dashboardMetrics changes
+  useEffect(() => {
+    if (dashboardMetrics) {
+      const teamAvgResponseTime = dashboardMetrics.agentPerformance?.length > 0 
+        ? Math.round(dashboardMetrics.agentPerformance.reduce((sum, agent) => sum + (agent.avgResponseTime || 0), 0) / dashboardMetrics.agentPerformance.length)
+        : 0;
+      
+      setMetrics([
+        {
+          icon: <FaUserTie className="text-lg text-blue-500" />,
+          value: (dashboardMetrics.agentPerformance?.length || 0).toString(),
+          label: 'Total Agents'
+        },
+        {
+          icon: <FaInbox className="text-lg text-orange-400" />,
+          value: dashboardMetrics.overview?.totalTickets?.toString() || '0',
+          label: 'Ticket Volume'
+        },
+        {
+          icon: <FaStopwatch className="text-lg text-green-500" />,
+          value: `${teamAvgResponseTime}m`,
+          label: 'Avg Response Time'
+        },
+        {
+          icon: <FaHeart className="text-lg text-pink-500" />,
+          value: dashboardMetrics.satisfaction?.avgRating?.toFixed(1) || '0.0',
+          label: 'Overall CSAT'
+        }
+      ]);
+    }
+  }, [dashboardMetrics]);
+
   return (
     <div>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4 sm:gap-0">
         <h1 className="text-2xl sm:text-3xl font-bold">System Overview</h1>
         <div className="flex flex-wrap gap-3 sm:gap-6">
-          <Button variant='smallSubmit' size='md'>Generate Report</Button>
+          <Button 
+            variant='smallSubmit' 
+            size='md' 
+            onClick={handleGenerateReport}
+            disabled={loading || isExporting}
+          >
+            {isExporting ? 'Generating...' : 'Generate Report'}
+          </Button>
         </div>
       </div>
       

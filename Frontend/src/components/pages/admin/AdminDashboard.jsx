@@ -13,11 +13,32 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [metrics, setMetrics] = useState({
-    totalTickets: 0,
-    openTickets: 0,
-    resolvedTickets: 0,
-    averageResponseTime: 0,
-    customerSatisfaction: 0
+    overview: {
+      totalTickets: 0,
+      avgResolutionTime: 0,
+      avgResponseTime: 0,
+      customerSatisfaction: 0,
+      resolutionRate: 0,
+      trends: {
+        tickets: 0,
+        resolutionTime: 0,
+        responseTime: 0,
+        satisfaction: 0,
+        resolutionRate: 0
+      }
+    },
+    ticketsByPriority: { high: 0, medium: 0, low: 0 },
+    ticketsByCategory: [],
+    ticketsByStatus: {},
+    agentPerformance: [],
+    satisfaction: {
+      avgRating: 0,
+      totalRatings: 0,
+      distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+    },
+    recentActivity: [],
+    resolutionByPriority: [],
+    resolutionTimeTrend: []
   });
 
   // Debug logging

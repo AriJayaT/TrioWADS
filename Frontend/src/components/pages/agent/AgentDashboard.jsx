@@ -45,149 +45,18 @@ const AgentDashboard = () => {
   // Add debouncing for fetchDashboardData to prevent race conditions
   const debounceTimeoutRef = useRef(null);
 
-  // Debounced version of fetchDashboardData
-  const debouncedFetchDashboardData = useCallback(() => {
-    if (debounceTimeoutRef.current) {
-      clearTimeout(debounceTimeoutRef.current);
-    }
-    
-    debounceTimeoutRef.current = setTimeout(() => {
-      fetchDashboardData();
-    }, 500); // 500ms debounce
-  }, []);
-
-  // Combined socket event setup
-  useEffect(() => {
-    if (!socket || !isConnected) {
-      console.log(`[${COMPONENT_NAME}] Socket not connected, skipping event handlers`);
-      return;
-    }
-
-    console.log(`[${COMPONENT_NAME}] Setting up socket event handlers`);
-
-    // Handler for new notifications
-    const handleNewNotification = (notification) => {
-      console.log(`[${COMPONENT_NAME}] New notification received:`, notification);
-      setNotifications(prev => [notification, ...prev]);
-    };
-
-    // Handler for ticket updates
-    const handleTicketUpdate = (data) => {
-      console.log(`[${COMPONENT_NAME}] Handling ticket update:`, data);
-      
-      // Update active tickets if the updated ticket is in the list
-      setActiveTickets(prevTickets => {
-        const updatedTickets = prevTickets.map(ticket => 
-          ticket.id === data._id ? {
-            ...ticket,
-            status: data.status === 'open' ? 'Awaiting your response' : 
-                   data.status === 'in-progress' ? 'In progress' : 'Pending'
-          } : ticket
-        );
-        console.log(`[${COMPONENT_NAME}] Active tickets updated from ticket_updated event`);
-        return updatedTickets;
-      });
-      
-      // Use debounced fetch to prevent conflicts
-      debouncedFetchDashboardData();
-    };
-
-    // Handler for ticket assignment
-    const handleTicketAssigned = (data) => {
-      const currentUserId = user?._id;
-      
-      console.log(`[${COMPONENT_NAME}] Handling ticket assigned:`, {
-        ticketId: data?._id,
-        assignedTo: data?.assignedTo,
-        currentUserId,
-        ticketSubject: data?.subject
-      });
-      
-      // Check if this ticket is assigned to the current agent
-      const assignedToId = data?.assignedTo?._id || data?.assignedTo;
-      const isAssignedToMe = assignedToId && currentUserId &&
-        (assignedToId === currentUserId || assignedToId.toString() === currentUserId.toString());
-      
-      if (isAssignedToMe) {
-        console.log(`[${COMPONENT_NAME}] ✅ Ticket assigned to current agent - updating dashboard`);
-        
-        // Update active tickets immediately with optimistic update
-        setActiveTickets(prevTickets => {
-          const exists = prevTickets.some(ticket => ticket.id === data._id);
-          if (exists) {
-            return prevTickets.map(ticket => 
-              ticket.id === data._id ? {
-                ...ticket,
-                status: data.status === 'open' ? 'Awaiting your response' : 
-                       data.status === 'in-progress' ? 'In progress' : 'Pending',
-                customer: data.user?.name || ticket.customer
-              } : ticket
-            );
-          }
-          
-          const newTicket = {
-            id: data._id,
-            ticketNumber: data.ticketNumber,
-            subject: data.subject,
-            customer: data.user?.name || 'Customer',
-            status: data.status === 'open' ? 'Awaiting your response' : 
-                   data.status === 'in-progress' ? 'In progress' : 'Pending'
-          };
-          return [newTicket, ...prevTickets];
-        });
-        
-        // Refresh dashboard data after a short delay
-        setTimeout(() => {
-          fetchDashboardData();
-        }, 1000);
-      } else {
-        // Still refresh metrics in case this affects overall stats
-        debouncedFetchDashboardData();
-      }
-    };
-
-    // Handler for stats updates
-    const handleStatsUpdate = (stats) => {
-      console.log(`[${COMPONENT_NAME}] Handling stats update:`, stats);
-      debouncedFetchDashboardData();
-    };
-
-    // Add event listeners directly to socket
-    socket.on('new_notification', handleNewNotification);
-    socket.on('ticket_updated', handleTicketUpdate);
-    socket.on('ticket_assigned', handleTicketAssigned);
-    socket.on('stats_updated', handleStatsUpdate);
-
-    console.log(`[${COMPONENT_NAME}] ✅ Socket event handlers registered`);
-
-    // Cleanup function
-    return () => {
-      console.log('[AgentDashboard] Cleaning up socket event subscriptions');
-      try {
-        if (socket) {
-          socket.off('new_notification', handleNewNotification);
-          socket.off('ticket_updated', handleTicketUpdate);
-          socket.off('ticket_assigned', handleTicketAssigned);
-          socket.off('stats_updated', handleStatsUpdate);
-        }
-      } catch (error) {
-        console.error('[AgentDashboard] Error cleaning up socket events:', error);
-      }
-    };
-  }, [socket, isConnected, user?._id, debouncedFetchDashboardData]);
-
-  // Separate useEffect for initial data loading
-  useEffect(() => {
-    fetchDashboardData();
-    fetchNotifs();
-  }, []); // Only run once on mount
-  
+  // Define fetchDashboardData before any useEffect hooks
   const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(true);
-      setError(null); // Clear any previous errors
+      setError(null);
       
-      // Initialize metrics with default values
+      console.log('[AgentDashboard] Starting fetchDashboardData, current user:', {
+        userId: user?._id,
+        userRole: user?.role,
+        userType: user?.agentType
+      });
+      
       let currentMetrics = {
         responseTime: { value: '0m', change: '0m', direction: 'neutral' },
         resolutionRate: { value: '0%', change: '0%', direction: 'neutral' },
@@ -195,7 +64,6 @@ const AgentDashboard = () => {
         ticketsResolved: { value: '0', change: '0', direction: 'neutral' }
       };
       
-      // Get agent-specific statistics
       try {
         const statsResponse = await ticketService.getAgentStats();
         console.log('[AgentDashboard] Stats response:', statsResponse);
@@ -203,7 +71,6 @@ const AgentDashboard = () => {
         if (statsResponse && statsResponse.success && statsResponse.stats) {
           const stats = statsResponse.stats;
           
-          // Update metrics with real data, handling undefined values
           currentMetrics = {
             responseTime: {
               value: stats.avgResponseTime !== undefined ? `${stats.avgResponseTime}m` : '0m',
@@ -227,49 +94,107 @@ const AgentDashboard = () => {
             }
           };
 
-          console.log('[AgentDashboard] Updated metrics:', currentMetrics);
-
-          // Set recent activities from agent stats
           if (stats.recentActivity && Array.isArray(stats.recentActivity)) {
             setRecentActivities(stats.recentActivity);
           }
         }
       } catch (statsError) {
         console.error('[AgentDashboard] Error fetching agent stats:', statsError);
-        // Continue with default values, don't throw error
       }
       
-      // Always set the metrics (either real data or defaults)
       setMetrics(currentMetrics);
       
-      // Fetch active tickets (assigned to this agent and not closed)
       try {
-        const activeTicketsResponse = await ticketService.getTickets({
+        // Log the request parameters
+        const requestParams = {
           assignedTo: user?._id,
-          status: 'Open,In Progress,Pending'
-        });
-        console.log('[AgentDashboard] Active tickets response:', activeTicketsResponse);
+          status: ['open', 'in-progress', 'waiting-for-customer', 'waiting-for-agent'].join(','),
+          sort: '-createdAt'
+        };
+        
+        console.log('[AgentDashboard] Fetching active tickets with params:', requestParams);
+        
+        const activeTicketsResponse = await ticketService.getTickets(requestParams);
+        
+        console.log('[AgentDashboard] Raw active tickets response:', activeTicketsResponse);
         
         if (activeTicketsResponse && activeTicketsResponse.tickets) {
-          // Format active tickets
-          const formattedActiveTickets = (activeTicketsResponse.tickets || []).map(ticket => ({
-            id: ticket._id,
-            ticketNumber: ticket.ticketNumber,
-            subject: ticket.subject,
-            customer: ticket.user?.name || 'Customer',
-            status: ticket.status === 'open' ? 'Awaiting your response' : 
-                    ticket.status === 'in-progress' ? 'In progress' : 'Pending'
-          }));
+          // Log the raw tickets before filtering
+          console.log('[AgentDashboard] Tickets before filtering:', 
+            activeTicketsResponse.tickets.map(t => ({
+              id: t._id,
+              assignedTo: t.assignedTo,
+              status: t.status,
+              subject: t.subject
+            }))
+          );
           
-          setActiveTickets(formattedActiveTickets);
+          const formattedActiveTickets = activeTicketsResponse.tickets
+            .filter(ticket => {
+              const isAssigned = ticket.assignedTo && 
+                (ticket.assignedTo._id === user?._id || ticket.assignedTo === user?._id);
+              
+              // Log each ticket's assignment check
+              console.log('[AgentDashboard] Ticket assignment check:', {
+                ticketId: ticket._id,
+                ticketAssignedTo: ticket.assignedTo,
+                userId: user?._id,
+                isAssigned
+              });
+              
+              return isAssigned;
+            })
+            .map(ticket => {
+              const formatted = {
+                id: ticket._id,
+                ticketNumber: ticket.ticketNumber,
+                subject: ticket.subject,
+                customer: ticket.user?.name || 'Customer',
+                status: ticket.status === 'open' ? 'Awaiting your response' : 
+                       ticket.status === 'in-progress' ? 'In progress' : 
+                       ticket.status === 'waiting-for-customer' ? 'Waiting for customer' :
+                       ticket.status === 'waiting-for-agent' ? 'Pending' : ticket.status,
+                priority: ticket.priority,
+                createdAt: ticket.createdAt,
+                assignedTo: ticket.assignedTo
+              };
+              
+              // Log each formatted ticket
+              console.log('[AgentDashboard] Formatted ticket:', formatted);
+              
+              return formatted;
+            });
+          
+          console.log('[AgentDashboard] Final formatted tickets:', formattedActiveTickets);
+          
+          // Sort tickets by priority and status
+          const sortedTickets = formattedActiveTickets.sort((a, b) => {
+            // First sort by priority
+            const priorityOrder = { high: 0, medium: 1, low: 2 };
+            const priorityDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
+            if (priorityDiff !== 0) return priorityDiff;
+            
+            // Then by status
+            const statusPriority = {
+              'Awaiting your response': 0,
+              'In progress': 1,
+              'Waiting for customer': 2,
+              'Pending': 3
+            };
+            return statusPriority[a.status] - statusPriority[b.status];
+          });
+          
+          console.log('[AgentDashboard] Final sorted tickets:', sortedTickets);
+          
+          setActiveTickets(sortedTickets);
+        } else {
+          console.warn('[AgentDashboard] No tickets found in response:', activeTicketsResponse);
         }
       } catch (ticketsError) {
         console.error('[AgentDashboard] Error fetching active tickets:', ticketsError);
-        // Set empty array if tickets fail to load
         setActiveTickets([]);
       }
       
-      // Count unassigned tickets for notification badge
       try {
         const unassignedResponse = await ticketService.getTickets({ 
           unassigned: true 
@@ -278,13 +203,11 @@ const AgentDashboard = () => {
         setUnassignedCount(unassignedResponse.tickets?.length || 0);
       } catch (unassignedError) {
         console.error('[AgentDashboard] Error fetching unassigned tickets:', unassignedError);
-        // Set to 0 if fails
         setUnassignedCount(0);
       }
       
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
-      // Provide more specific error messages based on error type
       if (err.response?.status === 429) {
         setError('Too many requests. Please wait a moment and try again.');
       } else if (err.response?.status === 401) {
@@ -298,6 +221,182 @@ const AgentDashboard = () => {
       setLoading(false);
     }
   }, [user?._id]);
+
+  // Now all the useEffect hooks can use fetchDashboardData
+  // Combined socket event setup
+  useEffect(() => {
+    if (!socket || !isConnected) {
+      console.log(`[${COMPONENT_NAME}] Socket not connected, skipping event handlers`);
+      return;
+    }
+
+    console.log(`[${COMPONENT_NAME}] Setting up socket event handlers`);
+
+    // Handler for new notifications
+    const handleNewNotification = (notification) => {
+      console.log(`[${COMPONENT_NAME}] New notification received:`, notification);
+      setNotifications(prev => [notification, ...prev]);
+    };
+
+    // Handler for ticket assignment
+    const handleTicketAssigned = async (data) => {
+      console.log(`[${COMPONENT_NAME}] Handling ticket assigned event:`, {
+        ticketData: data,
+        currentUserId: user?._id,
+        assignedToId: data?.assignedTo?._id || data?.assignedTo,
+        ticketStatus: data?.status,
+        ticketId: data?._id
+      });
+      
+      const currentUserId = user?._id;
+      const assignedToId = data?.assignedTo?._id || data?.assignedTo;
+      const isAssignedToMe = assignedToId && currentUserId && 
+        (assignedToId === currentUserId || assignedToId.toString() === currentUserId.toString());
+      
+      if (isAssignedToMe) {
+        console.log(`[${COMPONENT_NAME}] Ticket assigned to current agent, updating active tickets`);
+        
+        try {
+          // Fetch the complete ticket details
+          const ticketResponse = await ticketService.getTicket(data._id);
+          console.log(`[${COMPONENT_NAME}] Fetched ticket details:`, ticketResponse);
+          
+          if (ticketResponse && ticketResponse.ticket) {
+            const ticket = ticketResponse.ticket;
+            
+            // Format the ticket for display
+            const formattedTicket = {
+              id: ticket._id,
+              ticketNumber: ticket.ticketNumber,
+              subject: ticket.subject,
+              customer: ticket.user?.name || 'Customer',
+              status: ticket.status === 'open' ? 'Awaiting your response' : 
+                     ticket.status === 'in-progress' ? 'In progress' : 
+                     ticket.status === 'waiting-for-customer' ? 'Waiting for customer' :
+                     ticket.status === 'waiting-for-agent' ? 'Pending' : ticket.status,
+              priority: ticket.priority,
+              createdAt: ticket.createdAt,
+              assignedTo: ticket.assignedTo
+            };
+            
+            // Update active tickets state
+            setActiveTickets(prev => {
+              // Check if ticket already exists
+              const exists = prev.some(t => t.id === ticket._id);
+              console.log(`[${COMPONENT_NAME}] Updating active tickets:`, {
+                existingCount: prev.length,
+                ticketExists: exists,
+                newTicket: formattedTicket
+              });
+              
+              if (!exists) {
+                // Add new ticket and sort by priority and status
+                const newTickets = [...prev, formattedTicket].sort((a, b) => {
+                  // First sort by priority
+                  const priorityOrder = { high: 0, medium: 1, low: 2 };
+                  const priorityDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
+                  if (priorityDiff !== 0) return priorityDiff;
+                  
+                  // Then by status
+                  const statusPriority = {
+                    'Awaiting your response': 0,
+                    'In progress': 1,
+                    'Waiting for customer': 2,
+                    'Pending': 3
+                  };
+                  return statusPriority[a.status] - statusPriority[b.status];
+                });
+                return newTickets;
+              }
+              return prev;
+            });
+            
+            // Refresh dashboard data to update metrics
+            fetchDashboardData();
+          }
+        } catch (error) {
+          console.error(`[${COMPONENT_NAME}] Error fetching assigned ticket details:`, error);
+        }
+      } else {
+        console.log(`[${COMPONENT_NAME}] Ticket not assigned to current agent, skipping update`);
+      }
+    };
+
+    // Handler for ticket updates
+    const handleTicketUpdate = async (data) => {
+      console.log(`[${COMPONENT_NAME}] Handling ticket update event:`, data);
+      
+      setActiveTickets(prev => {
+        const updatedTickets = prev.map(ticket => {
+          if (ticket.id === data._id) {
+            return {
+              ...ticket,
+              status: data.status === 'open' ? 'Awaiting your response' : 
+                     data.status === 'in-progress' ? 'In progress' : 
+                     data.status === 'waiting-for-customer' ? 'Waiting for customer' :
+                     data.status === 'waiting-for-agent' ? 'Pending' : data.status,
+              priority: data.priority
+            };
+          }
+          return ticket;
+        });
+        
+        // Sort by status priority
+        return updatedTickets.sort((a, b) => {
+          const statusPriority = {
+            'Awaiting your response': 0,
+            'In progress': 1,
+            'Waiting for customer': 2,
+            'Pending': 3
+          };
+          return statusPriority[a.status] - statusPriority[b.status];
+        });
+      });
+    };
+
+    // Handler for stats updates
+    const handleStatsUpdate = (stats) => {
+      console.log(`[${COMPONENT_NAME}] Handling stats update:`, stats);
+      fetchDashboardData();
+    };
+
+    // Add event listeners
+    socket.on('new_notification', handleNewNotification);
+    socket.on('ticket_assigned', handleTicketAssigned);
+    socket.on('ticket_updated', handleTicketUpdate);
+    socket.on('stats_updated', handleStatsUpdate);
+
+    console.log(`[${COMPONENT_NAME}] ✅ Socket event handlers registered`);
+
+    // Cleanup function
+    return () => {
+      console.log(`[${COMPONENT_NAME}] Cleaning up socket event handlers`);
+      if (socket) {
+        socket.off('new_notification', handleNewNotification);
+        socket.off('ticket_assigned', handleTicketAssigned);
+        socket.off('ticket_updated', handleTicketUpdate);
+        socket.off('stats_updated', handleStatsUpdate);
+      }
+    };
+  }, [socket, isConnected, user?._id, fetchDashboardData]);
+
+  // Initial data fetch
+  useEffect(() => {
+    console.log(`[${COMPONENT_NAME}] Initial data fetch`);
+    fetchDashboardData();
+    // Set up periodic refresh every 30 seconds
+    const refreshInterval = setInterval(() => {
+      console.log(`[${COMPONENT_NAME}] Periodic refresh`);
+      fetchDashboardData();
+    }, 30000);
+
+    return () => clearInterval(refreshInterval);
+  }, [fetchDashboardData]);
+
+  // Separate useEffect for initial data loading
+  useEffect(() => {
+    fetchNotifs();
+  }, []); // Only run once on mount
   
   const formatTimeAgo = (dateString) => {
     if (!dateString) return 'N/A';
@@ -622,23 +721,46 @@ const AgentDashboard = () => {
                 </div>
               ) : (
                 /* Ticket List */
-                activeTickets.map((ticket, index) => (
-                  <div key={ticket.id} className="mb-4 p-4 border rounded-lg hover:shadow-md transition-shadow">
-                    <div className="flex justify-between">
-                      <h3 className="font-medium">{ticket.subject}</h3>
-                      <span className={`text-xs px-2 py-1 rounded-full ${
-                        ticket.status === 'Awaiting your response' 
-                          ? 'bg-red-100 text-red-600' 
-                          : ticket.status === 'In progress'
-                          ? 'bg-yellow-100 text-yellow-600'
-                          : 'bg-blue-100 text-blue-600'
-                      }`}>
-                        {ticket.status}
-                      </span>
+                <div className="space-y-4">
+                  {activeTickets.map((ticket) => (
+                    <div 
+                      key={ticket.id} 
+                      className="block p-4 bg-white border rounded-lg"
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="flex-1">
+                          <h3 className="font-medium text-gray-900">{ticket.subject}</h3>
+                          <p className="text-sm text-gray-500 mt-1">
+                            {ticket.ticketNumber} • {ticket.customer}
+                          </p>
+                        </div>
+                        <span className={`text-xs px-2 py-1 rounded-full ${
+                          ticket.status === 'Awaiting your response' 
+                            ? 'bg-red-100 text-red-600' 
+                            : ticket.status === 'In progress'
+                            ? 'bg-yellow-100 text-yellow-600'
+                            : ticket.status === 'Waiting for customer'
+                            ? 'bg-blue-100 text-blue-600'
+                            : 'bg-pink-100 text-pink-600'
+                        }`}>
+                          {ticket.status}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className={`text-xs px-2 py-1 rounded-full ${
+                          ticket.priority === 'high' ? 'bg-red-50 text-red-600' :
+                          ticket.priority === 'medium' ? 'bg-yellow-50 text-yellow-600' :
+                          'bg-green-50 text-green-600'
+                        }`}>
+                          {ticket.priority?.charAt(0).toUpperCase() + ticket.priority?.slice(1)}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          Created {new Date(ticket.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
                     </div>
-                    <p className="text-sm text-gray-500">{ticket.customer}</p>
-                  </div>
-                ))
+                  ))}
+                </div>
               )}
             </div>
 
