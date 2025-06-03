@@ -126,7 +126,7 @@ app.get('/', (req, res) => {
 // Use route files
 app.use('/api/auth', authRoutes);
 app.use('/api/tickets', ticketRoutes);
-app.use('/api/articles', articleRoutes);
+app.use('/articles', articleRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/chatbot', chatbotRoutes);
