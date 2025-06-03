@@ -13,7 +13,7 @@ const router = express.Router();
 
 /**
  * @swagger
- * /api/articles:
+ * /articles:
  *   get:
  *     summary: Get all articles (with filtering)
  *     tags: [Articles]
