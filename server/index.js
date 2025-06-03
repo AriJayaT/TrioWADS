@@ -79,7 +79,6 @@ app.use(
 app.use(limiter); // Apply rate limiting
 
 // Swagger documentation configuration
-const timestamp =Date.now();
 const swaggerOptions = {
   definition: {
     openapi: '3.0.0',
@@ -94,7 +93,7 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: "https://e2425-wads-l4acg3-server.csbihub.id/api",
+        url: "https://e2425-wads-l4acg3-server.csbihub.id",
         description: 'Production server'
       }
     ],
