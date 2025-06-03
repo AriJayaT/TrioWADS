@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://e2425-wads-l4acg3-server.csbihub.id/api';
+const API_URL = 'https://e2425-wads-l4acg3-server.csbihub.id/api';
 
 // Create axios instance with base URL
 const api = axios.create({

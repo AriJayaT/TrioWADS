@@ -90,7 +90,7 @@ function App() {
       <AuthProvider>
         <SocketProvider>
           <BrowserRouter>
-            <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
+            <GoogleOAuthProvider clientId={"https://e2425-wads-l4acg3-server.csbihub.id"}>
               <Routes>
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/select-version" element={<VersionSelectPage />} />

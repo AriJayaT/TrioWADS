@@ -5,7 +5,7 @@ import { useAuth } from './AuthContext';
 const SocketContext = createContext();
 
 // Get the socket URL from environment variables
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
+const SOCKET_URL = 'https://e2425-wads-l4acg3-server.csbihub.id';
 
 export const useSocket = () => useContext(SocketContext);
 
