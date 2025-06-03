@@ -90,7 +90,7 @@ function App() {
       <AuthProvider>
         <SocketProvider>
           <BrowserRouter>
-            <GoogleOAuthProvider clientId={"https://e2425-wads-l4acg3-server.csbihub.id"}>
+            <GoogleOAuthProvider clientId={"28730692613-uvuvd2pfpf1iii5jmvkkn25cej6fa160.apps.googleusercontent.com"}>
               <Routes>
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/select-version" element={<VersionSelectPage />} />
