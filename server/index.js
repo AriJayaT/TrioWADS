@@ -93,7 +93,7 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: "https://e2425-wads-l4acg3-server.csbihub.id/api",
+        url: "https://e2425-wads-l4acg3-server.csbihub.id",
         description: 'Production server'
       }
     ],
