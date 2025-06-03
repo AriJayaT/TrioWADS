@@ -93,12 +93,8 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: process.env.NODE_ENV === 'development'
-          ? `http://localhost:${process.env.PORT || 5000}`
-          : 'https://e2425-wads-l4acg3-server.csbihub.id',
-        description: process.env.NODE_ENV === 'development'
-          ? 'Development server' 
-          : 'Production server'
+        url: "https://e2425-wads-l4acg3-server.csbihub.id/api",
+        description: 'Production server'
       }
     ],
     components: {
