@@ -1,8 +1,8 @@
 import apiClient from './apiClient';
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
+const API_URL = import.meta.env.VITE_API_URL || 'https://e2425-wads-l4acg3-server.csbihub.id/api';
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '28730692613-uvuvd2pfpf1iii5jmvkkn25cej6fa160.apps.googleusercontent.com';
 
 /**
  * Authentication service for user login, registration, and profile management

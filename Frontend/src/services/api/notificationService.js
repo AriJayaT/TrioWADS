@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'https://e2425-wads-l4acg3-server.csbihub.id/api';
 
 // Cache for notifications
 let notificationsCache = null;
