@@ -13,7 +13,7 @@ const router = express.Router();
 
 /**
  * @swagger
- * /articles:
+ * /api/articles:
  *   get:
  *     summary: Get all articles (with filtering)
  *     tags: [Articles]
@@ -53,7 +53,7 @@ router.get('/', getArticles);
 
 /**
  * @swagger
- * /articles/related:
+ * /api/articles/related:
  *   get:
  *     summary: Get related articles based on ticket subject and category
  *     tags: [Articles]
@@ -83,7 +83,7 @@ router.get('/related', getRelatedArticles);
 
 /**
  * @swagger
- * /articles/{id}:
+ * /api/articles/{id}:
  *   get:
  *     summary: Get article by ID
  *     tags: [Articles]
@@ -104,7 +104,7 @@ router.get('/:id', getArticle);
 
 /**
  * @swagger
- * /articles:
+ * /api/articles:
  *   post:
  *     summary: Create a new article
  *     tags: [Articles]
@@ -148,7 +148,7 @@ router.post('/', protect, createArticle);
 
 /**
  * @swagger
- * /articles/{id}:
+ * /api/articles/{id}:
  *   put:
  *     summary: Update an article
  *     tags: [Articles]
@@ -199,7 +199,7 @@ router.put('/:id', protect, updateArticle);
 
 /**
  * @swagger
- * /articles/{id}:
+ * /api/articles/{id}:
  *   delete:
  *     summary: Delete an article
  *     tags: [Articles]
