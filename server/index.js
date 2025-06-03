@@ -56,8 +56,7 @@ const limiter = rateLimit({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors({
-  origin: ["*"
-  ],
+  origin: 'https://e2425-wads-l4acg3-client.csbihub.id',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
@@ -75,6 +74,7 @@ app.use(
       },
     },
     crossOriginOpenerPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" }
   })
 );
 app.use(limiter); // Apply rate limiting
