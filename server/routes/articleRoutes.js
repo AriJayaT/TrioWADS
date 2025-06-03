@@ -13,7 +13,7 @@ const router = express.Router();
 
 /**
  * @swagger
- * /articles:
+ * /api/articles:
  *   get:
  *     summary: Get all articles (with filtering)
  *     tags: [Articles]
@@ -53,7 +53,7 @@ router.get('/', getArticles);
 
 /**
  * @swagger
- * /articles/related:
+ * /api/articles/related:
  *   get:
  *     summary: Get related articles based on ticket subject and category
  *     tags: [Articles]

@@ -93,7 +93,7 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: "https://e2425-wads-l4acg3-server.csbihub.id",
+        url: "https://e2425-wads-l4acg3-server.csbihub.id/api",
         description: 'Production server'
       }
     ],
@@ -126,7 +126,7 @@ app.get('/', (req, res) => {
 // Use route files
 app.use('/api/auth', authRoutes);
 app.use('/api/tickets', ticketRoutes);
-app.use('/articles', articleRoutes);
+app.use('/api/articles', articleRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/chatbot', chatbotRoutes);
