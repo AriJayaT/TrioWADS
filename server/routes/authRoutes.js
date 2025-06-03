@@ -6,7 +6,7 @@ const router = express.Router();
 
 /**
  * @swagger
- * /api/auth/google:
+ * /auth/google:
  *   post:
  *     summary: Authenticate user with Google
  *     tags: [Auth]
@@ -34,7 +34,7 @@ router.post('/google', googleLogin);
 
 /**
  * @swagger
- * /api/auth/register:
+ * /auth/register:
  *   post:
  *     summary: Register a new user
  *     tags: [Auth]
@@ -69,7 +69,7 @@ router.post('/register', register);
 
 /**
  * @swagger
- * /api/auth/login:
+ * /auth/login:
  *   post:
  *     summary: Authenticate user and get token
  *     tags: [Auth]
@@ -97,7 +97,7 @@ router.post('/login', login);
 
 /**
  * @swagger
- * /api/auth/me:
+ * /auth/me:
  *   get:
  *     summary: Get current user profile
  *     tags: [Auth]
@@ -113,7 +113,7 @@ router.get('/me', protect, getCurrentUser);
 
 /**
  * @swagger
- * /api/auth/profile:
+ * /auth/profile:
  *   put:
  *     summary: Update user profile
  *     tags: [Auth]
@@ -142,7 +142,7 @@ router.put('/profile', protect, updateProfile);
 
 /**
  * @swagger
- * /api/auth/password:
+ * /auth/password:
  *   put:
  *     summary: Change user password
  *     tags: [Auth]
@@ -172,7 +172,7 @@ router.put('/password', protect, changePassword);
 
 /**
  * @swagger
- * /api/auth/send-verification:
+ * /auth/send-verification:
  *   post:
  *     summary: Send verification code to user's email
  *     tags: [Auth]
@@ -197,7 +197,7 @@ router.post('/send-verification', sendVerificationCode);
 
 /**
  * @swagger
- * /api/auth/verify-email/{token}:
+ * /auth/verify-email/{token}:
  *   get:
  *     summary: Verify user email with token
  *     tags: [Auth]
@@ -220,7 +220,7 @@ router.get('/verify-email/:token', verifyEmail);
 
 /**
  * @swagger
- * /api/auth/forgot-password:
+ * /auth/forgot-password:
  *   post:
  *     summary: Request password reset email
  *     tags: [Auth]
@@ -247,7 +247,7 @@ router.post('/forgot-password', forgotPassword);
 
 /**
  * @swagger
- * /api/auth/reset-password/{resettoken}:
+ * /auth/reset-password/{resettoken}:
  *   put:
  *     summary: Reset user password
  *     tags: [Auth]
