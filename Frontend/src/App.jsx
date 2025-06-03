@@ -21,7 +21,7 @@ import CustomerProfile from "./components/pages/profile/CustomerProfile";
 import AdminProfile from "./components/pages/profile/AdminProfile";
 import AgentProfile from "./components/pages/profile/AgentProfile";
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import { SocketProvider } from "./context/SocketContext";
+import { SocketProvider, useSocket } from "./context/SocketContext";
 import VerifyEmail from './components/pages/login&signup/VerifyEmail';
 import ForgotPassword from './components/pages/login&signup/ForgotPassword';
 import ResetPassword from './components/pages/login&signup/ResetPassword';
@@ -32,9 +32,10 @@ import ErrorBoundary from './components/common/ErrorBoundary';
 // Private route component to protect routes that require authentication
 const PrivateRoute = ({ children, requiredRole }) => {
   const { isAuthenticated, loading, user } = useAuth();
+  const { socket, isConnected } = useSocket();
   
-  // Show loading state while checking authentication
-  if (loading) {
+  // Show loading state while checking authentication or waiting for socket
+  if (loading || (isAuthenticated && !isConnected)) {
     return (
       <div className="flex justify-center items-center h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600"></div>
@@ -49,7 +50,6 @@ const PrivateRoute = ({ children, requiredRole }) => {
   
   // Redirect to a verification pending page if authenticated but not verified
   if (isAuthenticated && user && typeof user.isVerified !== 'undefined' && !user.isVerified) {
-    // You might want a dedicated page for this
     return <Navigate to="/verification-pending" replace />;
   }
   
@@ -65,8 +65,12 @@ const PrivateRoute = ({ children, requiredRole }) => {
     }
   }
   
-  // Render children if authenticated and authorized
-  return children;
+  // Only render children if authenticated, authorized, and socket is connected
+  return isConnected ? children : (
+    <div className="flex justify-center items-center h-screen">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600"></div>
+    </div>
+  );
 };
 
 function App() {
