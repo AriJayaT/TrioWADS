@@ -39,8 +39,8 @@ import User from './models/User.js';
 // Initialize express app
 const app = express();
 
-// Trust proxy - necessary when running behind Docker, nginx, or other proxies
-app.set('trust proxy', true);
+// This is more secure than 'true' which trusts all proxies
+app.set('trust proxy', ['loopback', 'linklocal', 'uniquelocal']);
 
 // Connect to MongoDB
 connectDatabase();
