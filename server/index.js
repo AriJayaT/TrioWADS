@@ -93,7 +93,7 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: "https://e2425-wads-l4acg3-server.csbihub.id/api",
+        url: "https://e2425-wads-l4acg3-server.csbihub.id",
         description: 'Production server'
       }
     ],
@@ -124,12 +124,12 @@ app.get('/', (req, res) => {
 });
 
 // Use route files
-app.use('/auth', authRoutes);
-app.use('/tickets', ticketRoutes);
-app.use('/articles', articleRoutes);
-app.use('/users', userRoutes);
-app.use('/notifications', notificationRoutes);
-app.use('/chatbot', chatbotRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/tickets', ticketRoutes);
+app.use('/api/articles', articleRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/chatbot', chatbotRoutes);
 
 // 404 handler
 app.use((req, res) => {
