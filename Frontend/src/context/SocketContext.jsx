@@ -13,6 +13,7 @@ export const SocketProvider = ({ children }) => {
   const { user } = useAuth();
   const [socket, setSocket] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const socketRef = useRef(null);
 
   useEffect(() => {
@@ -21,6 +22,7 @@ export const SocketProvider = ({ children }) => {
       // Clear socket state when no user
       setSocket(null);
       setIsConnected(false);
+      setIsAuthenticated(false);
       return;
     }
 
@@ -32,7 +34,7 @@ export const SocketProvider = ({ children }) => {
 
     socketInstance.on('connect', () => {
       console.log('[Socket] Connected with ID:', socketInstance.id);
-      // Don't set isConnected true yet - wait for authentication
+      setIsConnected(true);
       
       // Authenticate user
       console.log('[Socket] Authenticating user:', user._id);
@@ -41,26 +43,28 @@ export const SocketProvider = ({ children }) => {
 
     socketInstance.on('authenticated', (data) => {
       console.log('[Socket] Authentication successful, role:', data.role);
-      // Only now set both socket and isConnected
+      setIsAuthenticated(true);
       setSocket(socketInstance);
-      setIsConnected(true);
     });
 
     socketInstance.on('unauthorized', (data) => {
       console.error('[Socket] Authentication failed:', data.message);
       setSocket(null);
       setIsConnected(false);
+      setIsAuthenticated(false);
     });
 
     socketInstance.on('disconnect', () => {
       console.log('[Socket] Disconnected');
       setIsConnected(false);
+      setIsAuthenticated(false);
       setSocket(null);
     });
 
     socketInstance.on('connect_error', (error) => {
       console.error('[Socket] Connection error:', error);
       setIsConnected(false);
+      setIsAuthenticated(false);
       setSocket(null);
     });
 
@@ -71,13 +75,17 @@ export const SocketProvider = ({ children }) => {
       }
       setSocket(null);
       setIsConnected(false);
+      setIsAuthenticated(false);
     };
   }, [user?._id]);
 
+  // Only provide socket if both connected and authenticated
+  const socketValue = isConnected && isAuthenticated ? socket : null;
+
   return (
     <SocketContext.Provider value={{ 
-      socket, 
-      isConnected
+      socket: socketValue,
+      isConnected: isConnected && isAuthenticated
     }}>
       {children}
     </SocketContext.Provider>
