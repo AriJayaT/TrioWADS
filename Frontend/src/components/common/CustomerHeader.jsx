@@ -119,7 +119,7 @@ const CustomerHeader = () => {
             </>
           ) : (
             <>
-              <Link to="/select-version" className="flex items-center text-pink-500 hover:text-pink-600">
+              <Link to="/select-version" className="flex items-center text-pink-500 hover:text-pink-600" data-cy="sign-in-button">
                 <FaSignInAlt className="mr-1" /> Sign In
               </Link>
               <Link to="/signup" className="bg-pink-400 hover:bg-pink-500 text-white rounded-lg px-4 py-1 flex items-center">

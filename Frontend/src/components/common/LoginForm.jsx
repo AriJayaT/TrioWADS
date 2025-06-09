@@ -156,6 +156,7 @@ const LoginForm = ({ userType = "customer" }) => {
           icon={<FaEnvelope />}
           className="mb-3"
           disabled={isLoading}
+          data-cy="email-input"
         />
 
         <InputField
@@ -166,6 +167,7 @@ const LoginForm = ({ userType = "customer" }) => {
           icon={<FaKey />}
           className="mb-2"
           disabled={isLoading}
+          data-cy="password-input"
         />
 
         {/* Forgot password link */}
@@ -177,7 +179,7 @@ const LoginForm = ({ userType = "customer" }) => {
 
         {error && <p className="text-red-500 mt-[-1px] text-sm">{error}</p>}
 
-        <Button variant="bigSubmit" disabled={isLoading}>
+        <Button variant="bigSubmit" disabled={isLoading} data-cy="login-button">
           {isLoading ? "Signing in..." : "Sign in"}
         </Button>
       </form>

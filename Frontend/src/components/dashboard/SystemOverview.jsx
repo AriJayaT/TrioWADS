@@ -81,6 +81,8 @@ const SystemOverview = () => {
     console.log('[SystemOverview] Setting up socket event handlers');
     fetchMetrics();
 
+    if (!socket) return;
+
     // Subscribe to socket events
     const handleTicketUpdate = (data) => {
       console.log('[SystemOverview] Handling ticket update:', data);

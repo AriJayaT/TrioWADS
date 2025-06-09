@@ -213,6 +213,7 @@ const VersionSelect = () => {
             {/* Agent */}
             <div
               onClick={() => handleRoleSelect('agent')}
+              data-cy="agent-select"
               style={{
                 backgroundColor: '#fff0f5',
                 borderRadius: '16px',
